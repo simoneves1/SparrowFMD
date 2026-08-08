@@ -54,8 +54,20 @@ what any command means (per its own design note) and falling back to
 raw text for commands like M117 that don't use standard letter=value
 params.
 
-Everything else in main-esp, and all of touch-ui/ams-esp/shared, is
-still just per-module design notes (see each folder's README).
+`shared-protocol` (in `shared/shared-protocol/`) is also done and
+unit-tested: the UART message schema between main-esp and touch-ui/
+ams-esp, with its own frame envelope (independent from
+klipper-host-protocol's -- this is SparrowFDM's own protocol, no
+external wire-compatibility constraint) and a per-frame protocol
+version byte so mismatched firmware on independently-flashed boards
+fails loudly rather than silently misbehaving, per the module's stated
+design goal. First concrete message types: status_update and
+control_command.
+
+Everything else in main-esp, and all of touch-ui/ams-esp, is still just
+per-module design notes (see each folder's README) -- touch-ui and
+ams-esp specifically are waiting on their own ESP-IDF projects to exist
+before they can actually consume shared-protocol.
 
 ## Roadmap / TODO
 - [ ] Resolve the kinematics question above — prototype a float32 port
@@ -79,7 +91,7 @@ still just per-module design notes (see each folder's README).
 - [ ] `main-esp`: `storage` module — SD mount, G-code + config file I/O
 - [ ] `main-esp`: `web-ui` module — HTTP + WebSocket API shared by the
       standalone web UI, Touch UI, and (later) a farm server
-- [ ] `shared`: UART message schema + version/compatibility tagging
+- [x] `shared`: UART message schema + version/compatibility tagging
       between independently-flashed boards
 - [ ] `touch-ui`: UART client against `main-esp`'s `uart-links` module
 - [ ] `ams-esp`: post-v1 — spool selector, runout sensing, swap-at-pause
