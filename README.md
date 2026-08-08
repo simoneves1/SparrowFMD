@@ -48,6 +48,12 @@ serves the touch-ui/ams-esp `uart-links` case instead). USB CDC-ACM for
 Octopus/toolhead-board communication is still a separate, unstarted,
 meaningfully larger piece of work.
 
+`gcode-parser` is also done and unit-tested: turns a line of G-code
+text into a command word + parameters, staying deliberately ignorant of
+what any command means (per its own design note) and falling back to
+raw text for commands like M117 that don't use standard letter=value
+params.
+
 Everything else in main-esp, and all of touch-ui/ams-esp/shared, is
 still just per-module design notes (see each folder's README).
 
@@ -66,7 +72,7 @@ still just per-module design notes (see each folder's README).
       transport above doesn't satisfy this
 - [ ] Validate `khp_uart_transport` and the rest of
       `klipper-host-protocol` against real hardware once available
-- [ ] `main-esp`: `gcode-parser` module
+- [x] `main-esp`: `gcode-parser` module
 - [ ] `main-esp`: `kinematics` module (blocked on the open question above)
 - [ ] `main-esp`: `safety` module — link watchdog/heartbeat to
       mainboard/toolhead (not thermal safety, which lives on the MCU side)
