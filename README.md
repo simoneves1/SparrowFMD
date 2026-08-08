@@ -23,13 +23,13 @@ one) when talking to third-party boards. This is what makes "support
 lots of board types" nearly free — see the architecture planning notes.
 
 ## Big open question blocking real implementation — narrowed, not resolved
-The kinematics benchmark (chelper cross-compiled for the P4) has been run
-as a spike — see `main-esp/benchmarks/chelper-p4/RESULTS.md`. No P4
+A kinematics benchmark spike (chelper cross-compiled for the P4) was run
+and then removed from the repo, but its finding still stands: no P4
 hardware or working emulator was available, so there's no real on-target
-timing number yet, but the spike found something concrete: the P4's
-RISC-V core has no double-precision hardware FPU, and Klipper's chelper
-does all trajectory math in `double`. A real cross-compile for `esp32p4`
-confirms every double-precision op in the hot path becomes a
+timing number, but the spike found something concrete — the P4's RISC-V
+core has no double-precision hardware FPU, and Klipper's chelper does
+all trajectory math in `double`. A real cross-compile for `esp32p4`
+confirmed every double-precision op in the hot path becomes a
 software-floating-point library call, not a hardware instruction. That's
 a specific, structural reason to be skeptical of "full Klipper-grade
 kinematics fits as-is" — not a final answer, but the open question is now
