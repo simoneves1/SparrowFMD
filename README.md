@@ -72,6 +72,14 @@ transition. Explicitly not thermal runaway protection, per the
 module's own design note -- that lives on the mainboard/toolhead's own
 firmware, not here.
 
+`storage`'s `cfg_parser` is also done and unit-tested: reads main-esp's
+per-printer runtime config file (INI-style like Klipper's own
+printer.cfg, for familiarity -- but main-esp's own format, no
+compatibility requirement to match it byte-for-byte). Its `storage_sd`
+SD-card mount is a concrete ESP-IDF SDMMC+FATFS skeleton with the same
+**unverified against real hardware** caveat as `khp_uart_transport` --
+cross-compiles, nothing more.
+
 Everything else in main-esp, and all of touch-ui/ams-esp, is still just
 per-module design notes (see each folder's README) -- touch-ui and
 ams-esp specifically are waiting on their own ESP-IDF projects to exist
@@ -96,7 +104,9 @@ before they can actually consume shared-protocol.
 - [ ] `main-esp`: `kinematics` module (blocked on the open question above)
 - [x] `main-esp`: `safety` module — link watchdog/heartbeat to
       mainboard/toolhead (not thermal safety, which lives on the MCU side)
-- [ ] `main-esp`: `storage` module — SD mount, G-code + config file I/O
+- [x] `main-esp`: `storage` module — cfg_parser tested; SD mount
+      unverified against hardware — see Status
+- [ ] Validate `storage_sd` against real hardware once available
 - [ ] `main-esp`: `web-ui` module — HTTP + WebSocket API shared by the
       standalone web UI, Touch UI, and (later) a farm server
 - [x] `shared`: UART message schema + version/compatibility tagging
