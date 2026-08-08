@@ -22,9 +22,16 @@ Main ESP implements Klipper's actual host<->MCU protocol (not a custom
 one) when talking to third-party boards. This is what makes "support
 lots of board types" nearly free — see the architecture planning notes.
 
-## Big open question blocking real implementation
-The kinematics benchmark (chelper cross-compiled for the P4, tested
-against real G-code) hasn't been run yet. Until that's done, `main-esp`
-below is written assuming full Klipper-grade kinematics fit on the P4 —
-if the benchmark says otherwise, the kinematics/planning module design
-changes to the Marlin-style local-execution fallback discussed earlier.
+## Big open question blocking real implementation — narrowed, not resolved
+The kinematics benchmark (chelper cross-compiled for the P4) has been run
+as a spike — see `main-esp/benchmarks/chelper-p4/RESULTS.md`. No P4
+hardware or working emulator was available, so there's no real on-target
+timing number yet, but the spike found something concrete: the P4's
+RISC-V core has no double-precision hardware FPU, and Klipper's chelper
+does all trajectory math in `double`. A real cross-compile for `esp32p4`
+confirms every double-precision op in the hot path becomes a
+software-floating-point library call, not a hardware instruction. That's
+a specific, structural reason to be skeptical of "full Klipper-grade
+kinematics fits as-is" — not a final answer, but the open question is now
+"does a float32 port of chelper's hot path close the gap, or do we need
+the Marlin-style fallback" rather than "will chelper run fast enough."

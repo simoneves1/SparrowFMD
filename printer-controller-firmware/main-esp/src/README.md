@@ -10,12 +10,20 @@ know which kinematics type is active.
 
 ## kinematics
 Trajectory planning / lookahead. THE module most affected by the
-pending benchmark result. Two designs to keep in mind while structuring
-this, so switching doesn't mean a rewrite:
+pending benchmark result — see
+`../benchmarks/chelper-p4/RESULTS.md` for the spike's findings so far.
+A real cross-compile of chelper for esp32p4 shows the P4's RISC-V core
+has no double-precision hardware FPU, so chelper's `double`-based math
+compiles to software floating-point calls in the hot path — a concrete
+reason to be skeptical of "fits as-is," though no hardware/on-target
+timing exists yet to confirm or rule it out. Two designs to keep in mind
+while structuring this, so switching doesn't mean a rewrite:
   - Full Klipper-grade: jerk-limited lookahead, junction deviation,
-    pressure advance integrated into planning.
+    pressure advance integrated into planning. Now conditional on either
+    a float32 port of the hot math path closing the soft-double gap, or
+    real hardware timing showing it's fast enough anyway.
   - Marlin-style fallback: Bresenham-style local stepping, lighter
-    lookahead, less CPU.
+    lookahead, less CPU. Current lean, pending the float32 port attempt.
 Scope for v1: single kinematics type only (Cartesian or CoreXY, match
 whatever the test printer actually is) — no multi-kinematics abstraction
 yet, don't over-engineer this before the benchmark result is in.
