@@ -1,10 +1,11 @@
 // Host-buildable unit tests for the klipper-host-protocol component.
 // Build with any C compiler, no ESP-IDF required:
-//   gcc -Wall -I../include -o khp_test test_main.c ../src/vlq.c ../src/msgblock.c
+//   gcc -Wall -I../include -o khp_test test_main.c ../src/vlq.c ../src/msgblock.c ../src/identify.c
 #include <stdio.h>
 #include <string.h>
 #include "khp_vlq.h"
 #include "khp_msgblock.h"
+#include "khp_identify.h"
 
 static int g_failures = 0;
 
@@ -164,6 +165,141 @@ test_msgblock_need_more_data(void)
          , r == 0);
 }
 
+// Encode a fake identify_response's content (as if it came from an
+// MCU): cmd_id=0, offset, VLQ-length-prefixed data.
+static size_t
+encode_fake_identify_response(uint8_t *out, uint32_t offset
+                              , const uint8_t *data, size_t data_len)
+{
+    uint8_t *p = out;
+    p += khp_vlq_encode_uint32(p, KHP_IDENTIFY_RESPONSE_CMD_ID);
+    p += khp_vlq_encode_uint32(p, offset);
+    p += khp_vlq_encode_uint32(p, (uint32_t)data_len);
+    memcpy(p, data, data_len);
+    p += data_len;
+    return (size_t)(p - out);
+}
+
+static void
+test_identify_build_request(void)
+{
+    uint8_t out[16];
+    size_t n = khp_identify_build_request(out, 40, KHP_IDENTIFY_CHUNK_SIZE);
+    CHECK("identify request encodes to a non-empty content", n > 0 && n <= 16);
+
+    // Round-trip: decode the three VLQ fields back out by hand and
+    // check they match what we asked for.
+    const uint8_t *p = out;
+    uint32_t cmd_id = khp_vlq_decode_uint32(&p);
+    uint32_t offset = khp_vlq_decode_uint32(&p);
+    uint32_t count = khp_vlq_decode_uint32(&p);
+    CHECK("identify request fields round-trip"
+         , cmd_id == KHP_IDENTIFY_REQUEST_CMD_ID && offset == 40
+           && count == KHP_IDENTIFY_CHUNK_SIZE
+           && (size_t)(p - out) == n);
+}
+
+static void
+test_identify_parse_response(void)
+{
+    uint8_t data[4] = {0xde, 0xad, 0xbe, 0xef};
+    uint8_t content[16];
+    size_t content_len = encode_fake_identify_response(content, 12, data
+                                                        , sizeof(data));
+
+    uint32_t offset;
+    const uint8_t *out_data;
+    size_t out_len;
+    bool ok = khp_identify_parse_response(content, content_len, &offset
+                                          , &out_data, &out_len);
+    CHECK("identify response parses"
+         , ok && offset == 12 && out_len == sizeof(data)
+           && memcmp(out_data, data, sizeof(data)) == 0);
+
+    // A message that isn't an identify_response (wrong cmd id) must be
+    // rejected, not silently misread.
+    uint8_t wrong_cmd[16];
+    size_t wrong_len = encode_fake_identify_response(wrong_cmd, 0, data
+                                                      , sizeof(data));
+    wrong_cmd[0] = 99; // stomp the cmd_id byte (still a valid 1-byte VLQ)
+    ok = khp_identify_parse_response(wrong_cmd, wrong_len, &offset
+                                     , &out_data, &out_len);
+    CHECK("identify response with wrong cmd id is rejected", !ok);
+
+    // A response claiming more data than is actually present must be
+    // rejected too.
+    uint8_t truncated[16];
+    size_t truncated_len = encode_fake_identify_response(truncated, 0, data
+                                                          , sizeof(data));
+    truncated_len -= 2; // chop off the last 2 bytes of "data" without
+                        // updating the length field
+    ok = khp_identify_parse_response(truncated, truncated_len, &offset
+                                     , &out_data, &out_len);
+    CHECK("identify response claiming more data than present is rejected", !ok);
+}
+
+static void
+test_identify_session_full_handshake(void)
+{
+    // Simulate an MCU with a 90-byte dictionary, served back in
+    // KHP_IDENTIFY_CHUNK_SIZE-sized chunks, terminated by an empty one.
+    uint8_t fake_dict[90];
+    for (size_t i = 0; i < sizeof(fake_dict); i++)
+        fake_dict[i] = (uint8_t)(i * 3 + 1);
+
+    struct khp_identify_session s;
+    khp_identify_session_init(&s);
+
+    int rounds = 0;
+    while (!s.complete && !s.error && rounds < 10) {
+        uint8_t req[16];
+        size_t req_len = khp_identify_session_next_request(&s, req);
+        if (req_len == 0)
+            break;
+
+        // Decode the offset the session asked for, exactly like a real
+        // MCU would need to.
+        const uint8_t *p = req;
+        khp_vlq_decode_uint32(&p); // cmd_id, unused here
+        uint32_t offset = khp_vlq_decode_uint32(&p);
+
+        size_t remaining = sizeof(fake_dict) - offset;
+        size_t chunk = remaining < KHP_IDENTIFY_CHUNK_SIZE
+            ? remaining : KHP_IDENTIFY_CHUNK_SIZE;
+
+        uint8_t resp[64];
+        size_t resp_len = encode_fake_identify_response(
+            resp, offset, fake_dict + offset, chunk);
+        khp_identify_session_handle_response(&s, resp, resp_len);
+        rounds++;
+    }
+
+    CHECK("identify session completes within a reasonable round count"
+         , s.complete && !s.error && rounds < 10);
+    CHECK("identify session reassembles the full dictionary correctly"
+         , s.len == sizeof(fake_dict)
+           && memcmp(s.buf, fake_dict, sizeof(fake_dict)) == 0);
+
+    khp_identify_session_free(&s);
+}
+
+static void
+test_identify_session_rejects_out_of_order(void)
+{
+    struct khp_identify_session s;
+    khp_identify_session_init(&s);
+
+    // Session expects offset=0 first; hand it offset=40 instead.
+    uint8_t data[4] = {1, 2, 3, 4};
+    uint8_t resp[16];
+    size_t resp_len = encode_fake_identify_response(resp, 40, data
+                                                     , sizeof(data));
+    bool ok = khp_identify_session_handle_response(&s, resp, resp_len);
+    CHECK("identify session rejects an out-of-order chunk", !ok && s.error);
+
+    khp_identify_session_free(&s);
+}
+
 int
 main(void)
 {
@@ -174,6 +310,10 @@ main(void)
     test_msgblock_corrupt_crc();
     test_msgblock_resync();
     test_msgblock_need_more_data();
+    test_identify_build_request();
+    test_identify_parse_response();
+    test_identify_session_full_handshake();
+    test_identify_session_rejects_out_of_order();
 
     printf("\n%s (%d failure%s)\n"
           , g_failures ? "SOME TESTS FAILED" : "ALL TESTS PASSED"
