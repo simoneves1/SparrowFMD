@@ -1,3 +1,0 @@
-[submodule "printer-controller-firmware/main-esp/benchmarks/chelper-p4/vendor/klipper"]
-	path = printer-controller-firmware/main-esp/benchmarks/chelper-p4/vendor/klipper
-	url = https://github.com/Klipper3d/klipper.git

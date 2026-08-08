@@ -1,0 +1,38 @@
+# ESP-IDF / PlatformIO build output
+build/
+build.*/
+managed_components/
+dependencies.lock
+sdkconfig.old
+sdkconfig.*.old
+.pio/
+
+# Toolchain/environment paths that embed this machine's username/layout
+.espressif/
+sdkconfig.defaults.local
+
+# C/C++ build artifacts
+*.o
+*.obj
+*.elf
+*.bin
+*.map
+*.d
+
+# Editor / IDE (machine-specific state)
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and env files that can contain local paths/secrets
+*.log
+.env
+.env.*
+!.env.example
