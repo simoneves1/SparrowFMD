@@ -4,10 +4,12 @@
 // real hardware, not just the host-native unit tests. Replace this once
 // gcode-parser/kinematics/etc. exist and there's a real app to run.
 #include <stdio.h>
+#include <string.h>
 #include <stdbool.h>
 #include "esp_log.h"
 #include "khp_vlq.h"
 #include "khp_msgblock.h"
+#include "gcode_parser.h"
 
 static const char *TAG = "main-esp";
 
@@ -40,9 +42,25 @@ self_test_protocol(void)
     return khp_vlq_decode_int32(&p) == v;
 }
 
+static bool
+self_test_gcode(void)
+{
+    static const char line[] = "G1 X10.5 Y-20 F3000";
+    struct gcode_command cmd;
+    enum gcode_status st = gcode_parse_line(line, strlen(line), &cmd);
+    if (st != GCODE_OK || cmd.letter != 'G' || cmd.code != 1
+        || cmd.param_count != 3)
+        return false;
+    const struct gcode_param *x = gcode_find_param(&cmd, 'X');
+    return x != NULL && x->value == 10.5;
+}
+
 void
 app_main(void)
 {
     bool ok = self_test_protocol();
     ESP_LOGI(TAG, "klipper-host-protocol self-test: %s", ok ? "PASS" : "FAIL");
+
+    ok = self_test_gcode();
+    ESP_LOGI(TAG, "gcode-parser self-test: %s", ok ? "PASS" : "FAIL");
 }
