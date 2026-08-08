@@ -3,6 +3,14 @@ idf_component_register(
         "src/vlq.c"
         "src/msgblock.c"
         "src/identify.c"
+        "src/dictionary.c"
+        "third_party/puff/puff.c"
     INCLUDE_DIRS
         "include"
+)
+
+# puff.c is vendored verbatim (see third_party/puff/README.md) -- not
+# ours to fix warnings in.
+set_source_files_properties(third_party/puff/puff.c PROPERTIES
+    COMPILE_OPTIONS "-Wno-unused-but-set-variable"
 )

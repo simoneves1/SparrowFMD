@@ -1,11 +1,14 @@
 // Host-buildable unit tests for the klipper-host-protocol component.
 // Build with any C compiler, no ESP-IDF required:
-//   gcc -Wall -I../include -o khp_test test_main.c ../src/vlq.c ../src/msgblock.c ../src/identify.c
+//   gcc -Wall -I../include -o khp_test test_main.c ../src/vlq.c
+//   ../src/msgblock.c ../src/identify.c ../src/dictionary.c
+//   ../third_party/puff/puff.c
 #include <stdio.h>
 #include <string.h>
 #include "khp_vlq.h"
 #include "khp_msgblock.h"
 #include "khp_identify.h"
+#include "khp_dictionary.h"
 
 static int g_failures = 0;
 
@@ -300,6 +303,67 @@ test_identify_session_rejects_out_of_order(void)
     khp_identify_session_free(&s);
 }
 
+// Real zlib-compressed reference fixture, generated with Python's zlib
+// module (zlib.compress(data, 9)) from the JSON text below -- an
+// independently-produced compressed stream, not something derived from
+// our own encoder, so this actually exercises puff() and the zlib
+// header/Adler-32 handling against ground truth.
+static const char REFERENCE_JSON[] =
+    "{\"version\":\"v1.0\",\"commands\":{\"get_uptime\":1},\"config\":{}}";
+static const uint8_t REFERENCE_ZLIB[] = {
+    0x78, 0xda, 0xab, 0x56, 0x2a, 0x4b, 0x2d, 0x2a, 0xce, 0xcc, 0xcf, 0x53,
+    0xb2, 0x52, 0x2a, 0x33, 0xd4, 0x33, 0x50, 0xd2, 0x51, 0x4a, 0xce, 0xcf,
+    0xcd, 0x4d, 0xcc, 0x4b, 0x29, 0x56, 0xb2, 0xaa, 0x56, 0x4a, 0x4f, 0x2d,
+    0x89, 0x2f, 0x2d, 0x28, 0xc9, 0xcc, 0x4d, 0x55, 0xb2, 0x32, 0xac, 0x05,
+    0xc9, 0xe5, 0xa5, 0x65, 0xa6, 0x03, 0x65, 0x6a, 0x6b, 0x01, 0x38, 0xfe,
+    0x13, 0xb4,
+};
+
+static void
+test_dictionary_inflate_reference(void)
+{
+    struct khp_dictionary d;
+    enum khp_dictionary_status st = khp_dictionary_inflate(
+        &d, REFERENCE_ZLIB, sizeof(REFERENCE_ZLIB));
+
+    CHECK("dictionary inflate of a real zlib fixture succeeds"
+         , st == KHP_DICT_OK);
+    if (st == KHP_DICT_OK) {
+        CHECK("dictionary inflate reproduces the original JSON exactly"
+             , d.json_len == strlen(REFERENCE_JSON)
+               && memcmp(d.json, REFERENCE_JSON, d.json_len) == 0);
+        khp_dictionary_free(&d);
+    }
+}
+
+static void
+test_dictionary_rejects_bad_header(void)
+{
+    uint8_t garbage[8] = {0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    struct khp_dictionary d;
+    enum khp_dictionary_status st = khp_dictionary_inflate(&d, garbage
+                                                            , sizeof(garbage));
+    CHECK("dictionary inflate rejects a non-zlib header"
+         , st == KHP_DICT_BAD_ZLIB_HEADER);
+}
+
+static void
+test_dictionary_rejects_corrupted_stream(void)
+{
+    uint8_t corrupted[sizeof(REFERENCE_ZLIB)];
+    memcpy(corrupted, REFERENCE_ZLIB, sizeof(corrupted));
+    corrupted[20] ^= 0xff; // flip a bit well inside the deflate stream
+
+    struct khp_dictionary d;
+    enum khp_dictionary_status st = khp_dictionary_inflate(&d, corrupted
+                                                            , sizeof(corrupted));
+    // Either puff() itself rejects the now-invalid deflate stream, or it
+    // decodes something but the Adler-32 no longer matches -- both are
+    // "this data is corrupt", which is what actually matters here.
+    CHECK("dictionary inflate rejects a corrupted compressed stream"
+         , st == KHP_DICT_INFLATE_ERROR || st == KHP_DICT_ADLER_MISMATCH);
+}
+
 int
 main(void)
 {
@@ -314,6 +378,9 @@ main(void)
     test_identify_parse_response();
     test_identify_session_full_handshake();
     test_identify_session_rejects_out_of_order();
+    test_dictionary_inflate_reference();
+    test_dictionary_rejects_bad_header();
+    test_dictionary_rejects_corrupted_stream();
 
     printf("\n%s (%d failure%s)\n"
           , g_failures ? "SOME TESTS FAILED" : "ALL TESTS PASSED"
