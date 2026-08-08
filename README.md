@@ -64,6 +64,14 @@ fails loudly rather than silently misbehaving, per the module's stated
 design goal. First concrete message types: status_update and
 control_command.
 
+`safety`'s `link_watchdog` is also done and unit-tested: a small,
+generic heartbeat monitor (feed it on each message from a link, check()
+it periodically) that reports a latched fault once a link's gone quiet
+too long, with an edge-triggered callback firing exactly once at the
+transition. Explicitly not thermal runaway protection, per the
+module's own design note -- that lives on the mainboard/toolhead's own
+firmware, not here.
+
 Everything else in main-esp, and all of touch-ui/ams-esp, is still just
 per-module design notes (see each folder's README) -- touch-ui and
 ams-esp specifically are waiting on their own ESP-IDF projects to exist
@@ -86,7 +94,7 @@ before they can actually consume shared-protocol.
       `klipper-host-protocol` against real hardware once available
 - [x] `main-esp`: `gcode-parser` module
 - [ ] `main-esp`: `kinematics` module (blocked on the open question above)
-- [ ] `main-esp`: `safety` module — link watchdog/heartbeat to
+- [x] `main-esp`: `safety` module — link watchdog/heartbeat to
       mainboard/toolhead (not thermal safety, which lives on the MCU side)
 - [ ] `main-esp`: `storage` module — SD mount, G-code + config file I/O
 - [ ] `main-esp`: `web-ui` module — HTTP + WebSocket API shared by the
