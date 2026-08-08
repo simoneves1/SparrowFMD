@@ -2,6 +2,10 @@ idf_component_register(
     SRCS
         "src/slp_frame.c"
         "src/slp_messages.c"
+        "src/slp_session.c"
+        "src/slp_uart_transport.c"
     INCLUDE_DIRS
         "include"
+    REQUIRES
+        esp_driver_uart
 )

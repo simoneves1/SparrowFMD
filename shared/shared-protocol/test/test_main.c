@@ -1,10 +1,13 @@
 // Host-buildable unit tests for shared-protocol.
 // Build with any C compiler, no ESP-IDF required:
-//   gcc -Wall -I../include -o slp_test test_main.c ../src/slp_frame.c ../src/slp_messages.c
+//   gcc -Wall -I../include -o slp_test test_main.c ../src/slp_frame.c
+//   ../src/slp_messages.c ../src/slp_session.c
+// (slp_uart_transport.c is ESP-IDF-only and deliberately excluded here)
 #include <stdio.h>
 #include <string.h>
 #include "slp_frame.h"
 #include "slp_messages.h"
+#include "slp_session.h"
 
 static int g_failures = 0;
 
@@ -225,6 +228,164 @@ test_status_update_through_a_real_frame(void)
          , ok && out.state == SLP_STATE_HOMING);
 }
 
+// ---- slp_session tests, via an in-memory mock transport --------------
+
+struct mock_transport {
+    const uint8_t *rx_data;
+    size_t rx_len, rx_pos;
+    uint8_t tx_data[512];
+    size_t tx_len;
+};
+
+static int
+mock_read(void *ctx, uint8_t *buf, size_t buf_len, int timeout_ms)
+{
+    (void)timeout_ms;
+    struct mock_transport *m = ctx;
+    size_t avail = m->rx_len - m->rx_pos;
+    size_t n = avail < buf_len ? avail : buf_len;
+    memcpy(buf, m->rx_data + m->rx_pos, n);
+    m->rx_pos += n;
+    return (int)n;
+}
+
+static int
+mock_write(void *ctx, const uint8_t *data, size_t len)
+{
+    struct mock_transport *m = ctx;
+    memcpy(m->tx_data + m->tx_len, data, len);
+    m->tx_len += len;
+    return (int)len;
+}
+
+struct recorded_frame {
+    uint8_t msg_type;
+    uint8_t payload[SLP_FRAME_MAX_PAYLOAD];
+    size_t payload_len;
+};
+
+struct frame_recorder {
+    struct recorded_frame frames[16];
+    size_t count;
+};
+
+static void
+record_frame_cb(void *ctx, uint8_t msg_type, const uint8_t *payload
+                , size_t payload_len)
+{
+    struct frame_recorder *r = ctx;
+    if (r->count >= sizeof(r->frames) / sizeof(r->frames[0]))
+        return;
+    struct recorded_frame *f = &r->frames[r->count++];
+    f->msg_type = msg_type;
+    memcpy(f->payload, payload, payload_len);
+    f->payload_len = payload_len;
+}
+
+static void
+test_session_poll_dispatches_multiple_frames(void)
+{
+    // Garbage that ends with its own sync byte, then two valid frames
+    // back to back -- see klipper-host-protocol's khp_session tests for
+    // why the garbage needs its own sync byte (otherwise resync would
+    // consume into the first real frame too, which is correct framing
+    // behavior but not what this test is exercising).
+    uint8_t garbage[3] = {0x00, 0x11, SLP_FRAME_SYNC};
+    uint8_t payload1[3] = {0xaa, 0xbb, 0xcc};
+    uint8_t payload2[2] = {0x01, 0x02};
+    uint8_t frame1[SLP_FRAME_MAX], frame2[SLP_FRAME_MAX];
+    size_t len1 = slp_frame_encode(frame1, SLP_MSG_STATUS_UPDATE, payload1
+                                   , sizeof(payload1));
+    size_t len2 = slp_frame_encode(frame2, SLP_MSG_CONTROL_COMMAND, payload2
+                                   , sizeof(payload2));
+
+    uint8_t stream[16 + SLP_FRAME_MAX * 2];
+    size_t pos = 0;
+    memcpy(stream + pos, garbage, sizeof(garbage)); pos += sizeof(garbage);
+    memcpy(stream + pos, frame1, len1); pos += len1;
+    memcpy(stream + pos, frame2, len2); pos += len2;
+
+    struct mock_transport mock = {0};
+    mock.rx_data = stream;
+    mock.rx_len = pos;
+
+    struct slp_transport transport = {&mock, mock_write, mock_read};
+    struct slp_session session;
+    slp_session_init(&session, transport);
+
+    struct frame_recorder recorder = {0};
+    int n = slp_session_poll(&session, 0, record_frame_cb, &recorder);
+
+    CHECK("session poll dispatches both frames in one call"
+         , n == 2 && recorder.count == 2);
+    if (recorder.count == 2) {
+        CHECK("session poll: first frame type/payload correct"
+             , recorder.frames[0].msg_type == SLP_MSG_STATUS_UPDATE
+               && recorder.frames[0].payload_len == sizeof(payload1)
+               && memcmp(recorder.frames[0].payload, payload1
+                        , sizeof(payload1)) == 0);
+        CHECK("session poll: second frame type/payload correct"
+             , recorder.frames[1].msg_type == SLP_MSG_CONTROL_COMMAND
+               && recorder.frames[1].payload_len == sizeof(payload2)
+               && memcmp(recorder.frames[1].payload, payload2
+                        , sizeof(payload2)) == 0);
+    }
+}
+
+static void
+test_session_poll_drops_version_mismatch(void)
+{
+    uint8_t payload[2] = {1, 2};
+    uint8_t frame[SLP_FRAME_MAX];
+    size_t frame_len = slp_frame_encode(frame, SLP_MSG_STATUS_UPDATE, payload
+                                        , sizeof(payload));
+    frame[1] = SLP_PROTOCOL_VERSION + 1; // stomp the version byte
+    uint16_t crc = slp_crc16_ccitt(frame
+        , (uint8_t)(frame_len - SLP_FRAME_TRAILER_SIZE));
+    frame[frame_len - 3] = (uint8_t)(crc >> 8);
+    frame[frame_len - 2] = (uint8_t)crc;
+
+    struct mock_transport mock = {0};
+    mock.rx_data = frame;
+    mock.rx_len = frame_len;
+
+    struct slp_transport transport = {&mock, mock_write, mock_read};
+    struct slp_session session;
+    slp_session_init(&session, transport);
+
+    struct frame_recorder recorder = {0};
+    int n = slp_session_poll(&session, 0, record_frame_cb, &recorder);
+    CHECK("session poll drops a version-mismatched frame (no callback, no error)"
+         , n == 0 && recorder.count == 0);
+}
+
+static void
+test_session_send(void)
+{
+    struct mock_transport mock = {0};
+    struct slp_transport transport = {&mock, mock_write, mock_read};
+    struct slp_session session;
+    slp_session_init(&session, transport);
+
+    uint8_t payload[3] = {0x10, 0x20, 0x30};
+    bool ok = slp_session_send(&session, SLP_MSG_CONTROL_COMMAND, payload
+                               , sizeof(payload));
+    CHECK("session send succeeds", ok);
+
+    struct slp_frame_scanner scanner = {0};
+    int r = slp_frame_check(&scanner, mock.tx_data, (int)mock.tx_len);
+    CHECK("session send produced a well-formed frame"
+         , r > 0 && (size_t)r == mock.tx_len);
+    if (r > 0) {
+        struct slp_frame_view view;
+        enum slp_frame_status st = slp_frame_view_init(&view, mock.tx_data, r);
+        CHECK("session send: type and payload are correct"
+             , st == SLP_FRAME_OK && view.msg_type == SLP_MSG_CONTROL_COMMAND
+               && view.payload_len == sizeof(payload)
+               && memcmp(view.payload, payload, sizeof(payload)) == 0);
+    }
+}
+
 int
 main(void)
 {
@@ -236,6 +397,9 @@ main(void)
     test_status_update_roundtrip();
     test_control_command_roundtrip();
     test_status_update_through_a_real_frame();
+    test_session_poll_dispatches_multiple_frames();
+    test_session_poll_drops_version_mismatch();
+    test_session_send();
 
     printf("\n%s (%d failure%s)\n"
           , g_failures ? "SOME TESTS FAILED" : "ALL TESTS PASSED"
