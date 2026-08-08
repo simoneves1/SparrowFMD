@@ -6,11 +6,14 @@ idf_component_register(
         "src/dictionary.c"
         "src/msgtable.c"
         "src/message.c"
+        "src/session.c"
+        "src/uart_transport.c"
         "third_party/puff/puff.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
         json
+        esp_driver_uart
 )
 
 # puff.c is vendored verbatim (see third_party/puff/README.md) -- not
