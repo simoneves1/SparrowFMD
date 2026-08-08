@@ -37,10 +37,16 @@ ported from Klipper's own reference implementation (klippy/msgproto.py,
 klippy/chelper/msgblock.c) for wire compatibility, not reimplemented
 from the protocol docs alone.
 
-Not done: actual UART/USB transport. Everything above was built and
-verified without real hardware (host-buildable unit tests + real
-esp32p4 cross-compiles); transport is the first piece of this module
-that genuinely needs a real board to build and validate against.
+A transport skeleton also exists now: `khp_session` (receive buffering,
+the framing/dispatch loop, outgoing sequencing) is transport-agnostic
+and unit-tested with a mock transport, and `khp_uart_transport` is a
+concrete ESP-IDF UART implementation of it. That UART transport is
+explicitly **unverified against real hardware** — it cross-compiles,
+nothing more — and it's the wrong transport for talking to third-party
+boards anyway (that needs USB CDC-ACM, not UART; the UART transport
+serves the touch-ui/ams-esp `uart-links` case instead). USB CDC-ACM for
+Octopus/toolhead-board communication is still a separate, unstarted,
+meaningfully larger piece of work.
 
 Everything else in main-esp, and all of touch-ui/ams-esp/shared, is
 still just per-module design notes (see each folder's README).
@@ -52,8 +58,14 @@ still just per-module design notes (see each folder's README).
       guide (currently blocked on that choice)
 - [x] `main-esp`: `klipper-host-protocol` — framing, identify handshake,
       dictionary decompression/parsing, generic message encode/decode
-- [ ] `main-esp`: `klipper-host-protocol` — UART/USB transport (needs
-      real hardware to build and validate against)
+- [x] `main-esp`: `klipper-host-protocol` — transport skeleton
+      (khp_session, tested; khp_uart_transport, unverified against
+      hardware — see Status)
+- [ ] `main-esp`: `klipper-host-protocol` — USB CDC-ACM transport for
+      talking to third-party boards (Octopus, toolhead boards); UART
+      transport above doesn't satisfy this
+- [ ] Validate `khp_uart_transport` and the rest of
+      `klipper-host-protocol` against real hardware once available
 - [ ] `main-esp`: `gcode-parser` module
 - [ ] `main-esp`: `kinematics` module (blocked on the open question above)
 - [ ] `main-esp`: `safety` module — link watchdog/heartbeat to
