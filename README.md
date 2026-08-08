@@ -26,31 +26,34 @@ build-service from Klipper's own source — not from anything in this
 repo.
 
 ## Status
-Planning/scaffolding stage — no firmware code written yet, just
-per-module design notes (see each folder's README) and one resolved
-research spike (below). The immediate next step is starting on
-`main-esp`'s `klipper-host-protocol` module, since it's the piece the
-"any board just works" story depends on.
+`main-esp`'s `klipper-host-protocol` module has its software side
+done and unit-tested: message framing (VLQ, Klipper's CRC16-CCITT,
+block encode/decode with resync-on-garbage), the identify handshake
+(request/response + chunked dictionary reassembly), dictionary
+decompression (zlib/DEFLATE + Adler-32 verification), dictionary
+parsing into a queryable command/response/enum table, and generic
+message encode/decode against that table. All of it is bit-for-bit
+ported from Klipper's own reference implementation (klippy/msgproto.py,
+klippy/chelper/msgblock.c) for wire compatibility, not reimplemented
+from the protocol docs alone.
 
-## Open question: does full Klipper-grade kinematics fit on the P4?
-A benchmark spike (chelper cross-compiled for the P4, since removed from
-this repo — the finding stands regardless) found a concrete, structural
-reason to be skeptical: the P4's RISC-V core has no double-precision
-hardware FPU, and Klipper's chelper does all its trajectory math in
-`double`. A real cross-compile confirmed every double-precision op in
-chelper's hot path becomes a software-floating-point library call, not a
-hardware instruction. No real on-target timing exists yet to say whether
-that's actually too slow — the open question is now "does a float32 port
-of chelper's hot path close the gap, or do we fall back to Marlin-style
-local stepping" rather than "will chelper run fast enough."
+Not done: actual UART/USB transport. Everything above was built and
+verified without real hardware (host-buildable unit tests + real
+esp32p4 cross-compiles); transport is the first piece of this module
+that genuinely needs a real board to build and validate against.
+
+Everything else in main-esp, and all of touch-ui/ams-esp/shared, is
+still just per-module design notes (see each folder's README).
 
 ## Roadmap / TODO
 - [ ] Resolve the kinematics question above — prototype a float32 port
       of chelper's hot path, or get real P4 hardware/timing data
 - [ ] Pick the specific P4 board/module, finalize the pin-assignment
       guide (currently blocked on that choice)
-- [ ] `main-esp`: `klipper-host-protocol` module — talks to third-party
-      boards over USB using Klipper's real wire protocol
+- [x] `main-esp`: `klipper-host-protocol` — framing, identify handshake,
+      dictionary decompression/parsing, generic message encode/decode
+- [ ] `main-esp`: `klipper-host-protocol` — UART/USB transport (needs
+      real hardware to build and validate against)
 - [ ] `main-esp`: `gcode-parser` module
 - [ ] `main-esp`: `kinematics` module (blocked on the open question above)
 - [ ] `main-esp`: `safety` module — link watchdog/heartbeat to
