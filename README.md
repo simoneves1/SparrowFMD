@@ -1,8 +1,9 @@
-# printer-controller-firmware
+# SparrowFDM
 
-The firmware that runs on OUR boards: Main ESP, Touch UI, and (later) the
-AMS board. Ships as versioned release binaries that the configurator
-website flashes via WebSerial.
+Firmware for SparrowFDM's own printer-controller boards: Main ESP, Touch
+UI, and (later) the AMS board. Ships as versioned release binaries that
+the companion configurator website (separate repo,
+`printer-controller-configurator`) flashes via WebSerial.
 
 Three firmware targets, one shared library:
 - `main-esp/` — the brain: G-code parsing, kinematics, Klipper host
@@ -20,7 +21,7 @@ from anything in this repo.
 ## Foundational decision this whole repo depends on
 Main ESP implements Klipper's actual host<->MCU protocol (not a custom
 one) when talking to third-party boards. This is what makes "support
-lots of board types" nearly free — see the architecture planning notes.
+lots of board types" nearly free.
 
 ## Big open question blocking real implementation — narrowed, not resolved
 A kinematics benchmark spike (chelper cross-compiled for the P4) was run
@@ -35,3 +36,8 @@ a specific, structural reason to be skeptical of "full Klipper-grade
 kinematics fits as-is" — not a final answer, but the open question is now
 "does a float32 port of chelper's hot path close the gap, or do we need
 the Marlin-style fallback" rather than "will chelper run fast enough."
+
+## License
+[GPLv3](LICENSE), matching Klipper's own license — this project speaks
+Klipper's host<->MCU protocol and may incorporate or derive from
+Klipper's chelper code.
