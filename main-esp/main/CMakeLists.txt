@@ -9,4 +9,5 @@ idf_component_register(
         shared-protocol
         safety
         storage
+        web-ui
 )

@@ -14,6 +14,7 @@
 #include "slp_messages.h"
 #include "link_watchdog.h"
 #include "cfg_parser.h"
+#include "web_api.h"
 
 static const char *TAG = "main-esp";
 
@@ -124,6 +125,30 @@ self_test_storage(void)
     return true;
 }
 
+static bool
+self_test_web_ui(void)
+{
+    struct web_status s = {
+        .state = WEB_STATE_PRINTING, .hotend_temp = 210.5
+        , .hotend_target = 210.0, .bed_temp = 60.0, .bed_target = 60.0
+        , .progress_percent = 50, .elapsed_s = 120,
+    };
+    char *json = web_status_to_json(&s);
+    if (!json)
+        return false;
+
+    struct web_status out;
+    bool ok = web_msg_type_of(json, strlen(json)) == WEB_MSG_STATUS
+        && web_status_from_json(json, strlen(json), &out)
+        && out.progress_percent == 50;
+    web_json_free(json);
+    // web_server_start() is deliberately not exercised here -- it needs
+    // a real network stack and a real client to do anything meaningful,
+    // unlike this JSON encode/decode. See web_server.h's own
+    // "unverified against hardware" note.
+    return ok;
+}
+
 void
 app_main(void)
 {
@@ -141,4 +166,7 @@ app_main(void)
 
     ok = self_test_storage();
     ESP_LOGI(TAG, "storage self-test: %s", ok ? "PASS" : "FAIL");
+
+    ok = self_test_web_ui();
+    ESP_LOGI(TAG, "web-ui self-test: %s", ok ? "PASS" : "FAIL");
 }

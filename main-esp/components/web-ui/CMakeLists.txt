@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "src/web_api.c"
+        "src/web_server.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        json
+        esp_http_server
+)
