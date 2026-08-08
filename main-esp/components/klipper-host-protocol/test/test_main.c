@@ -10,6 +10,7 @@
 #include "khp_identify.h"
 #include "khp_dictionary.h"
 #include "khp_msgtable.h"
+#include "khp_message.h"
 
 static int g_failures = 0;
 
@@ -510,6 +511,172 @@ test_msgtable_rejects_invalid_json(void)
     CHECK("msgtable rejects malformed JSON", !ok);
 }
 
+static void
+test_message_roundtrip_all_integers(void)
+{
+    struct khp_msgtable t;
+    bool ok = khp_msgtable_parse(&t, SAMPLE_DICT_JSON
+                                 , sizeof(SAMPLE_DICT_JSON) - 1);
+    CHECK("message roundtrip test: sample dictionary parses", ok);
+    if (!ok)
+        return;
+
+    const struct khp_msg_entry *e = khp_msgtable_find_by_name(&t, "identify");
+    struct khp_param_list params;
+    bool pok = e && khp_msgtable_lookup_params(&t, e->format, &params);
+    CHECK("message roundtrip: identify's params parse", pok);
+    if (pok) {
+        struct khp_value values[2] = {{.i = 40}, {.i = 12345}};
+        uint8_t content[KHP_MSG_MAX_CONTENT];
+        size_t content_len;
+        bool enc = khp_msg_encode(content, sizeof(content), &content_len
+                                  , e->msgid, &params, values);
+        CHECK("message encode: identify offset=40 count=12345 succeeds", enc);
+
+        if (enc) {
+            struct khp_value out[2];
+            bool dec = khp_msg_decode(content, content_len, e->msgid
+                                      , &params, out);
+            CHECK("message decode: identify roundtrip recovers both values"
+                 , dec && out[0].i == 40 && out[1].i == 12345);
+        }
+        khp_param_list_free(&params);
+    }
+    khp_msgtable_free(&t);
+}
+
+static void
+test_message_roundtrip_with_buffer(void)
+{
+    struct khp_msgtable t;
+    bool ok = khp_msgtable_parse(&t, SAMPLE_DICT_JSON
+                                 , sizeof(SAMPLE_DICT_JSON) - 1);
+    if (!ok)
+        return;
+
+    const struct khp_msg_entry *e = khp_msgtable_find_by_name(
+        &t, "identify_response");
+    struct khp_param_list params;
+    bool pok = e && khp_msgtable_lookup_params(&t, e->format, &params);
+    CHECK("message roundtrip: identify_response's params parse", pok);
+    if (pok) {
+        const uint8_t payload[] = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x99};
+        struct khp_value values[2];
+        values[0].i = 500; // offset
+        values[1].buf.data = payload;
+        values[1].buf.len = sizeof(payload);
+
+        uint8_t content[KHP_MSG_MAX_CONTENT];
+        size_t content_len;
+        bool enc = khp_msg_encode(content, sizeof(content), &content_len
+                                  , e->msgid, &params, values);
+        CHECK("message encode: identify_response with a 6-byte buffer succeeds"
+             , enc);
+
+        if (enc) {
+            struct khp_value out[2];
+            bool dec = khp_msg_decode(content, content_len, e->msgid
+                                      , &params, out);
+            CHECK("message decode: identify_response roundtrip recovers offset"
+                 , dec && out[0].i == 500);
+            CHECK("message decode: identify_response roundtrip recovers buffer"
+                 , dec && out[1].buf.len == sizeof(payload)
+                   && memcmp(out[1].buf.data, payload, sizeof(payload)) == 0);
+        }
+        khp_param_list_free(&params);
+    }
+    khp_msgtable_free(&t);
+}
+
+static void
+test_message_encode_negative_int(void)
+{
+    struct khp_param p = {.name = (char *)"delta", .type = KHP_PARAM_INT32
+                          , .enum_group = NULL};
+    struct khp_param_list params = {.params = &p, .count = 1};
+    struct khp_value in = {.i = -98765};
+
+    uint8_t content[KHP_MSG_MAX_CONTENT];
+    size_t content_len;
+    bool enc = khp_msg_encode(content, sizeof(content), &content_len, 7
+                              , &params, &in);
+    CHECK("message encode: negative int32 succeeds", enc);
+    if (enc) {
+        struct khp_value out;
+        bool dec = khp_msg_decode(content, content_len, 7, &params, &out);
+        CHECK("message decode: negative int32 roundtrips"
+             , dec && out.i == -98765);
+    }
+}
+
+static void
+test_message_decode_rejects_wrong_msgid(void)
+{
+    struct khp_param_list params = {.params = NULL, .count = 0};
+    uint8_t content[8];
+    size_t content_len;
+    bool enc = khp_msg_encode(content, sizeof(content), &content_len, 3
+                              , &params, NULL);
+    CHECK("message encode with zero params succeeds", enc);
+    if (enc) {
+        struct khp_value out;
+        bool dec = khp_msg_decode(content, content_len, 4 /* wrong id */
+                                  , &params, &out);
+        CHECK("message decode rejects a mismatched msgid", !dec);
+    }
+}
+
+static void
+test_message_decode_rejects_trailing_garbage(void)
+{
+    struct khp_param_list params = {.params = NULL, .count = 0};
+    uint8_t content[8];
+    size_t content_len;
+    khp_msg_encode(content, sizeof(content), &content_len, 3, &params, NULL);
+    content[content_len] = 0xff; // one stray byte the param list doesn't expect
+
+    struct khp_value out;
+    bool dec = khp_msg_decode(content, content_len + 1, 3, &params, &out);
+    CHECK("message decode rejects trailing bytes past the param list", !dec);
+}
+
+static void
+test_message_decode_rejects_buffer_overrun(void)
+{
+    struct khp_param p = {.name = (char *)"data", .type = KHP_PARAM_BUFFER
+                          , .enum_group = NULL};
+    struct khp_param_list params = {.params = &p, .count = 1};
+    const uint8_t data[3] = {1, 2, 3};
+    struct khp_value in = {.buf = {.data = data, .len = sizeof(data)}};
+
+    uint8_t content[16];
+    size_t content_len;
+    khp_msg_encode(content, sizeof(content), &content_len, 9, &params, &in);
+    content_len -= 1; // truncate: the length field now claims more than present
+
+    struct khp_value out;
+    bool dec = khp_msg_decode(content, content_len, 9, &params, &out);
+    CHECK("message decode rejects a buffer claiming more bytes than present"
+         , !dec);
+}
+
+static void
+test_message_encode_rejects_undersized_output(void)
+{
+    struct khp_param p = {.name = (char *)"data", .type = KHP_PARAM_BUFFER
+                          , .enum_group = NULL};
+    struct khp_param_list params = {.params = &p, .count = 1};
+    uint8_t data[40] = {0};
+    struct khp_value in = {.buf = {.data = data, .len = sizeof(data)}};
+
+    uint8_t too_small[8];
+    size_t content_len;
+    bool enc = khp_msg_encode(too_small, sizeof(too_small), &content_len, 1
+                              , &params, &in);
+    CHECK("message encode rejects an output buffer too small for the payload"
+         , !enc);
+}
+
 int
 main(void)
 {
@@ -530,6 +697,13 @@ main(void)
     test_msgtable_parse_sample();
     test_msgtable_rejects_missing_commands();
     test_msgtable_rejects_invalid_json();
+    test_message_roundtrip_all_integers();
+    test_message_roundtrip_with_buffer();
+    test_message_encode_negative_int();
+    test_message_decode_rejects_wrong_msgid();
+    test_message_decode_rejects_trailing_garbage();
+    test_message_decode_rejects_buffer_overrun();
+    test_message_encode_rejects_undersized_output();
 
     printf("\n%s (%d failure%s)\n"
           , g_failures ? "SOME TESTS FAILED" : "ALL TESTS PASSED"

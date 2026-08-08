@@ -5,6 +5,7 @@ idf_component_register(
         "src/identify.c"
         "src/dictionary.c"
         "src/msgtable.c"
+        "src/message.c"
         "third_party/puff/puff.c"
     INCLUDE_DIRS
         "include"
