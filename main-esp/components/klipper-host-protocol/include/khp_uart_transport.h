@@ -2,12 +2,14 @@
 //
 // *** UNVERIFIED AGAINST REAL HARDWARE ***
 // Every other file in this component has been either unit-tested on the
-// host or (for ESP-IDF-specific code) at minimum cross-compiled for the
-// real esp32p4 target. This file can be cross-compiled the same way,
-// but "compiles" is the only thing that's actually been checked --
-// nothing here has run against a real UART peripheral or a real device
-// on the other end. Treat it as a skeleton to build on and test against
-// real hardware, not as verified working code.
+// host or (for ESP-IDF-specific code) at minimum cross-compiled -- for
+// both esp32p4 (main-esp's actual target) and esp32s3 (a portability
+// check, see main-esp/README.md's "designed to not lock into one chip"
+// note). This file cross-compiles for both too, but "compiles" is the
+// only thing that's actually been checked -- nothing here has run
+// against a real UART peripheral or a real device on the other end.
+// Treat it as a skeleton to build on and test against real hardware,
+// not as verified working code.
 //
 // Also note: this is a plain UART transport. main-esp/README.md and
 // main-esp/src/README.md describe the klipper-host-protocol module

@@ -1,17 +1,20 @@
 // Mounts the SD card's FAT filesystem via ESP-IDF's SDMMC peripheral
-// (4-bit mode, esp32p4's default SDMMC slot pinout) so it's readable
-// through standard POSIX file I/O (fopen/fread/fgets/...) at
-// mount_point -- "G-code file read/write" per main-esp/src/README.md's
-// storage module note doesn't need custom code beyond this: once
-// mounted, gcode-parser's caller can just fgets() lines from a file
-// under mount_point and feed them to gcode_parse_line().
+// (4-bit mode, using SDMMC_SLOT_CONFIG_DEFAULT() -- ESP-IDF's own
+// per-chip default pinout, so this picks up the right pins for whatever
+// chip it's built for automatically) so it's readable through standard
+// POSIX file I/O (fopen/fread/fgets/...) at mount_point -- "G-code file
+// read/write" per main-esp/src/README.md's storage module note doesn't
+// need custom code beyond this: once mounted, gcode-parser's caller can
+// just fgets() lines from a file under mount_point and feed them to
+// gcode_parse_line().
 //
 // *** UNVERIFIED AGAINST REAL HARDWARE ***
 // Same caveat as klipper-host-protocol's khp_uart_transport: this
-// cross-compiles for esp32p4, and that's the only thing that's actually
-// been checked. Nothing here has run against a real SD card or a real
-// SDMMC peripheral. Treat it as a skeleton to build on and test against
-// real hardware, not as verified working code.
+// cross-compiles for both esp32p4 (main-esp's actual target) and
+// esp32s3 (a portability check, see main-esp/README.md), and that's the
+// only thing that's actually been checked. Nothing here has run against
+// a real SD card or a real SDMMC peripheral. Treat it as a skeleton to
+// build on and test against real hardware, not as verified working code.
 #ifndef STORAGE_SD_H
 #define STORAGE_SD_H
 

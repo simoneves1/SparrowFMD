@@ -95,6 +95,14 @@ per-module design notes (see each folder's README) -- touch-ui and
 ams-esp specifically are waiting on their own ESP-IDF projects to exist
 before they can actually consume shared-protocol.
 
+Only one board is actually planned (P4), but see main-esp/README.md's
+"Designed to not lock into one chip" note: nothing in the application
+code is P4-specific, and main-esp now builds clean for a second chip
+(`esp32s3`) as a standing check that stays true. Not a claim that the
+firmware *works* on an S3 -- nothing has run on real hardware yet -- just
+that switching chips, if the P4 kinematics question forces it, shouldn't
+require rewriting application logic.
+
 ## Roadmap / TODO
 - [ ] Resolve the kinematics question above — prototype a float32 port
       of chelper's hot path, or get real P4 hardware/timing data
