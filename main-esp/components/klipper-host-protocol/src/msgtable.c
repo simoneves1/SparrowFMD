@@ -331,3 +331,122 @@ khp_msgtable_enum_value(const struct khp_msgtable *t, const char *group
     }
     return false;
 }
+
+// ---- parameter format-string parsing (klippy's MessageTypes/lookup_params) --
+
+static bool
+type_from_token(const char *tok, size_t len, enum khp_param_type *out)
+{
+    static const struct { const char *s; enum khp_param_type t; } table[] = {
+        {"%u", KHP_PARAM_UINT32}, {"%i", KHP_PARAM_INT32},
+        {"%hu", KHP_PARAM_UINT16}, {"%hi", KHP_PARAM_INT16},
+        {"%c", KHP_PARAM_BYTE},
+        {"%.*s", KHP_PARAM_PROGMEM_BUFFER}, // check before "%s" -- longer match
+        {"%*s", KHP_PARAM_BUFFER},
+        {"%s", KHP_PARAM_STRING},
+    };
+    for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
+        size_t tl = strlen(table[i].s);
+        if (tl == len && memcmp(tok, table[i].s, len) == 0) {
+            *out = table[i].t;
+            return true;
+        }
+    }
+    return false;
+}
+
+// klippy: `name == enum_name or name.endswith('_' + enum_name)`.
+static const struct khp_enum_group *
+find_matching_enum_group(const struct khp_msgtable *t, const char *name
+                         , size_t name_len)
+{
+    for (size_t i = 0; i < t->enum_group_count; i++) {
+        const char *gname = t->enum_groups[i].name;
+        size_t glen = strlen(gname);
+        if (glen == name_len && memcmp(gname, name, name_len) == 0)
+            return &t->enum_groups[i];
+        if (name_len >= glen + 1) {
+            const char *suffix = name + (name_len - glen);
+            if (suffix[-1] == '_' && memcmp(suffix, gname, glen) == 0)
+                return &t->enum_groups[i];
+        }
+    }
+    return NULL;
+}
+
+bool
+khp_msgtable_lookup_params(const struct khp_msgtable *t, const char *format
+                           , struct khp_param_list *out)
+{
+    out->params = NULL;
+    out->count = 0;
+
+    struct { struct khp_param *items; size_t count, cap; } v = {0};
+
+    const char *p = format;
+    while (*p && !isspace((unsigned char)*p)) // skip the message name
+        p++;
+
+    while (*p) {
+        while (*p && isspace((unsigned char)*p))
+            p++;
+        if (!*p)
+            break;
+        const char *tok_start = p;
+        while (*p && !isspace((unsigned char)*p))
+            p++;
+        const char *tok_end = p;
+
+        const char *eq = memchr(tok_start, '=', (size_t)(tok_end - tok_start));
+        if (!eq)
+            goto fail;
+        size_t name_len = (size_t)(eq - tok_start);
+        const char *type_start = eq + 1;
+        size_t type_len = (size_t)(tok_end - type_start);
+
+        enum khp_param_type ptype;
+        if (!type_from_token(type_start, type_len, &ptype))
+            goto fail;
+
+        struct khp_param param;
+        param.name = malloc(name_len + 1);
+        if (!param.name)
+            goto fail;
+        memcpy(param.name, tok_start, name_len);
+        param.name[name_len] = '\0';
+        param.type = ptype;
+        param.enum_group = find_matching_enum_group(t, tok_start, name_len);
+
+        if (v.count == v.cap) {
+            size_t new_cap = v.cap ? v.cap * 2 : 8;
+            struct khp_param *np = realloc(v.items, new_cap * sizeof(*np));
+            if (!np) {
+                free(param.name);
+                goto fail;
+            }
+            v.items = np;
+            v.cap = new_cap;
+        }
+        v.items[v.count++] = param;
+    }
+
+    out->params = v.items;
+    out->count = v.count;
+    return true;
+
+fail:
+    for (size_t i = 0; i < v.count; i++)
+        free(v.items[i].name);
+    free(v.items);
+    return false;
+}
+
+void
+khp_param_list_free(struct khp_param_list *p)
+{
+    for (size_t i = 0; i < p->count; i++)
+        free(p->params[i].name);
+    free(p->params);
+    p->params = NULL;
+    p->count = 0;
+}

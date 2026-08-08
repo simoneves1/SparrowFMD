@@ -434,6 +434,61 @@ test_msgtable_parse_sample(void)
     CHECK("enum lookup in a nonexistent group fails"
          , !khp_msgtable_enum_value(&t, "no_such_group", "x", &value));
 
+    // Parameter parsing against a real entry's format string.
+    struct khp_param_list params;
+    bool pok = khp_msgtable_lookup_params(&t
+        , "identify_response offset=%u data=%*s", &params);
+    CHECK("lookup_params parses identify_response's two params"
+         , pok && params.count == 2
+           && strcmp(params.params[0].name, "offset") == 0
+           && params.params[0].type == KHP_PARAM_UINT32
+           && params.params[0].enum_group == NULL
+           && strcmp(params.params[1].name, "data") == 0
+           && params.params[1].type == KHP_PARAM_BUFFER);
+    if (pok)
+        khp_param_list_free(&params);
+
+    // A synthetic format exercising every type token, plus both exact
+    // and suffix enum-name matching against the sample's "pin" group.
+    pok = khp_msgtable_lookup_params(&t
+        , "set_pin pin=%c value=%c some_pin=%c count=%i small=%hu"
+          " small_i=%hi text=%s raw=%*s prog=%.*s"
+        , &params);
+    CHECK("lookup_params parses a format exercising every type token"
+         , pok && params.count == 9);
+    if (pok) {
+        CHECK("lookup_params: param named exactly 'pin' matches the pin enum group"
+             , params.params[0].enum_group != NULL
+               && strcmp(params.params[0].enum_group->name, "pin") == 0);
+        CHECK("lookup_params: 'value' (no enum match) has enum_group == NULL"
+             , params.params[1].enum_group == NULL);
+        CHECK("lookup_params: 'some_pin' matches the pin group via '_pin' suffix"
+             , params.params[2].enum_group != NULL
+               && strcmp(params.params[2].enum_group->name, "pin") == 0);
+        CHECK("lookup_params: %i decodes as INT32"
+             , params.params[3].type == KHP_PARAM_INT32);
+        CHECK("lookup_params: %hu decodes as UINT16"
+             , params.params[4].type == KHP_PARAM_UINT16);
+        CHECK("lookup_params: %hi decodes as INT16"
+             , params.params[5].type == KHP_PARAM_INT16);
+        CHECK("lookup_params: %s decodes as STRING"
+             , params.params[6].type == KHP_PARAM_STRING);
+        CHECK("lookup_params: %*s decodes as BUFFER"
+             , params.params[7].type == KHP_PARAM_BUFFER);
+        CHECK("lookup_params: %.*s decodes as PROGMEM_BUFFER"
+             , params.params[8].type == KHP_PARAM_PROGMEM_BUFFER);
+        khp_param_list_free(&params);
+    }
+
+    pok = khp_msgtable_lookup_params(&t, "bogus foo=%zzz", &params);
+    CHECK("lookup_params rejects an unrecognized type token", !pok);
+
+    pok = khp_msgtable_lookup_params(&t, "no_params_at_all", &params);
+    CHECK("lookup_params on a message with no params returns an empty list"
+         , pok && params.count == 0);
+    if (pok)
+        khp_param_list_free(&params);
+
     khp_msgtable_free(&t);
 }
 

@@ -1,19 +1,13 @@
 // Parses the decompressed JSON text of an MCU's data dictionary (see
 // khp_dictionary.h) into a queryable table: message name/id lookups for
 // commands, responses, and debug output messages, plus named
-// enumeration groups. Mirrors klippy/msgproto.py's MessageParser
-// (_init_messages, fill_enumerations) -- same JSON schema, same
-// message-name-is-the-first-word-of-the-format-string convention.
+// enumeration groups and (via khp_msgtable_lookup_params) each
+// message's typed parameter list. Mirrors klippy/msgproto.py's
+// MessageParser (_init_messages, fill_enumerations, lookup_params) --
+// same JSON schema, same message-name-is-the-first-word-of-the-format-
+// string convention.
 //
-// Deliberately out of scope here: parsing each format string's `%u`
-// `%hu` `%c` `%*s` `:enum_name`-style parameter specifiers into a typed
-// parameter list (klippy's lookup_params/param_types). That's what
-// actual command encoding/decoding needs and is its own follow-up --
-// this module only gets you from JSON text to "here's the id and raw
-// format string for message X," which is enough to identify messages
-// even before full parameter-level encode/decode exists.
-//
-// Also out of scope: the dictionary's "config" key (a flat map of MCU
+// Still out of scope: the dictionary's "config" key (a flat map of MCU
 // build-time constants) -- not needed for anything built so far.
 #ifndef KHP_MSGTABLE_H
 #define KHP_MSGTABLE_H
@@ -77,5 +71,47 @@ const struct khp_msg_entry *khp_msgtable_find_by_id(
 bool khp_msgtable_enum_value(const struct khp_msgtable *t
                              , const char *group, const char *name
                              , int *out_value);
+
+// A message format string's parameters, e.g. "identify offset=%u
+// count=%u" has params [{name:"offset",type:UINT32}, {name:"count",
+// type:UINT32}] -- everything after the first (name) token. Ported from
+// klippy/msgproto.py's MessageTypes table + lookup_params.
+enum khp_param_type {
+    KHP_PARAM_UINT32,  // %u
+    KHP_PARAM_INT32,   // %i
+    KHP_PARAM_UINT16,  // %hu
+    KHP_PARAM_INT16,   // %hi
+    KHP_PARAM_BYTE,    // %c  (0-255, still VLQ-encoded on the wire)
+    KHP_PARAM_STRING,  // %s  -- VLQ-length-prefixed bytes on the wire;
+    KHP_PARAM_BUFFER,  // %*s -- these three differ in klippy only in
+    KHP_PARAM_PROGMEM_BUFFER, // %.*s -- how the *caller* supplies the
+                       // value, not in wire encoding, so they're kept
+                       // as distinct enum values for fidelity to the
+                       // dictionary but decode identically for now.
+};
+
+struct khp_param {
+    char *name;
+    enum khp_param_type type;
+    const struct khp_enum_group *enum_group; // NULL if not enum-typed;
+                                              // points into the same
+                                              // khp_msgtable this was
+                                              // parsed from
+};
+
+struct khp_param_list {
+    struct khp_param *params;
+    size_t count;
+};
+
+// Parses `format`'s parameter tokens (everything after the message
+// name) against `t`'s enumeration groups for enum-typed parameter
+// matching. `format` would typically come from a khp_msg_entry's
+// `format` field, but any well-formed "name key1=%type1 key2=%type2..."
+// string works. Returns false on an unrecognized %-type token.
+bool khp_msgtable_lookup_params(const struct khp_msgtable *t
+                                , const char *format
+                                , struct khp_param_list *out);
+void khp_param_list_free(struct khp_param_list *p);
 
 #endif // khp_msgtable.h
