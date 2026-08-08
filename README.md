@@ -61,8 +61,13 @@ klipper-host-protocol's -- this is SparrowFDM's own protocol, no
 external wire-compatibility constraint) and a per-frame protocol
 version byte so mismatched firmware on independently-flashed boards
 fails loudly rather than silently misbehaving, per the module's stated
-design goal. First concrete message types: status_update and
-control_command.
+design goal. Concrete message types: status_update and control_command.
+It now also has its own transport-agnostic session layer
+(`slp_session`, unit-tested with a mock transport, mirroring
+klipper-host-protocol's `khp_session`) and a concrete ESP-IDF UART
+transport (`slp_uart_transport`, unverified against real hardware) --
+this one, unlike `khp_uart_transport`, *is* the real transport for its
+protocol, not a stand-in.
 
 `safety`'s `link_watchdog` is also done and unit-tested: a small,
 generic heartbeat monitor (feed it on each message from a link, check()
@@ -90,10 +95,13 @@ concrete ESP-IDF `esp_http_server` skeleton with the same **unverified
 against real hardware** caveat as `khp_uart_transport`/`storage_sd`.
 Serving the UI's actual static files isn't done yet either.
 
-Everything else in main-esp, and all of touch-ui/ams-esp, is still just
-per-module design notes (see each folder's README) -- touch-ui and
-ams-esp specifically are waiting on their own ESP-IDF projects to exist
-before they can actually consume shared-protocol.
+`touch-ui` now has a real ESP-IDF project (targeting esp32s3) that
+builds clean and consumes shared-protocol -- still just a boot self-test
+in `main.c`, no display/touch driver or real UART wiring yet, but no
+longer just design notes. `ams-esp` still is, and remains post-v1.
+
+Everything else in main-esp is still just per-module design notes (see
+`main-esp/src/README.md`).
 
 Only one board is actually planned (P4), but see main-esp/README.md's
 "Designed to not lock into one chip" note: nothing in the application
@@ -130,7 +138,12 @@ require rewriting application logic.
 - [ ] Validate `web_server` against real hardware once available
 - [x] `shared`: UART message schema + version/compatibility tagging
       between independently-flashed boards
-- [ ] `touch-ui`: UART client against `main-esp`'s `uart-links` module
+- [x] `shared-protocol`: transport-agnostic session layer (tested) +
+      concrete UART transport (unverified against hardware)
+- [x] `touch-ui`: real ESP-IDF project scaffolded (esp32s3), consumes
+      shared-protocol; no display/input logic or real UART wiring yet
+- [ ] `touch-ui`: display/touch driver + real UART client against
+      `main-esp`'s `uart-links` module
 - [ ] `ams-esp`: post-v1 — spool selector, runout sensing, swap-at-pause
 
 ## License
