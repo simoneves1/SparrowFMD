@@ -80,6 +80,16 @@ SD-card mount is a concrete ESP-IDF SDMMC+FATFS skeleton with the same
 **unverified against real hardware** caveat as `khp_uart_transport` --
 cross-compiles, nothing more.
 
+`web-ui`'s JSON WebSocket API (`web_api`) is also done and unit-tested:
+status/control messages covering the same domain concepts as
+shared-protocol's status_update/control_command, but as JSON for
+browser/farm-server clients rather than shared-protocol's compact
+binary frames -- same ideas, kept in sync by design intent, no code
+dependency between the two. Its `web_server` HTTP+WebSocket server is a
+concrete ESP-IDF `esp_http_server` skeleton with the same **unverified
+against real hardware** caveat as `khp_uart_transport`/`storage_sd`.
+Serving the UI's actual static files isn't done yet either.
+
 Everything else in main-esp, and all of touch-ui/ams-esp, is still just
 per-module design notes (see each folder's README) -- touch-ui and
 ams-esp specifically are waiting on their own ESP-IDF projects to exist
@@ -107,8 +117,9 @@ before they can actually consume shared-protocol.
 - [x] `main-esp`: `storage` module — cfg_parser tested; SD mount
       unverified against hardware — see Status
 - [ ] Validate `storage_sd` against real hardware once available
-- [ ] `main-esp`: `web-ui` module — HTTP + WebSocket API shared by the
-      standalone web UI, Touch UI, and (later) a farm server
+- [x] `main-esp`: `web-ui` module — JSON WebSocket API tested; HTTP
+      server unverified against hardware; static file serving not done
+- [ ] Validate `web_server` against real hardware once available
 - [x] `shared`: UART message schema + version/compatibility tagging
       between independently-flashed boards
 - [ ] `touch-ui`: UART client against `main-esp`'s `uart-links` module
