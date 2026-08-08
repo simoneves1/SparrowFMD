@@ -7,4 +7,5 @@ idf_component_register(
         klipper-host-protocol
         gcode-parser
         shared-protocol
+        safety
 )

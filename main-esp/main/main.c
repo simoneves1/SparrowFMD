@@ -12,6 +12,7 @@
 #include "gcode_parser.h"
 #include "slp_frame.h"
 #include "slp_messages.h"
+#include "link_watchdog.h"
 
 static const char *TAG = "main-esp";
 
@@ -87,6 +88,20 @@ self_test_shared_protocol(void)
         && out.progress_percent == 50;
 }
 
+static bool
+self_test_safety(void)
+{
+    struct link_watchdog wd;
+    link_watchdog_init(&wd, 1000, NULL, NULL);
+    link_watchdog_feed(&wd, 0);
+    if (link_watchdog_check(&wd, 500) != LINK_OK)
+        return false;
+    if (link_watchdog_check(&wd, 1000) != LINK_FAULTED)
+        return false;
+    link_watchdog_reset(&wd, 2000);
+    return link_watchdog_check(&wd, 2000) == LINK_OK;
+}
+
 void
 app_main(void)
 {
@@ -98,4 +113,7 @@ app_main(void)
 
     ok = self_test_shared_protocol();
     ESP_LOGI(TAG, "shared-protocol self-test: %s", ok ? "PASS" : "FAIL");
+
+    ok = self_test_safety();
+    ESP_LOGI(TAG, "safety self-test: %s", ok ? "PASS" : "FAIL");
 }
