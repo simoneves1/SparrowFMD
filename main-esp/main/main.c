@@ -10,6 +10,8 @@
 #include "khp_vlq.h"
 #include "khp_msgblock.h"
 #include "gcode_parser.h"
+#include "slp_frame.h"
+#include "slp_messages.h"
 
 static const char *TAG = "main-esp";
 
@@ -55,6 +57,36 @@ self_test_gcode(void)
     return x != NULL && x->value == 10.5;
 }
 
+static bool
+self_test_shared_protocol(void)
+{
+    struct slp_status_update s = {
+        .state = SLP_STATE_PRINTING, .hotend_temp_c_x100 = 21050
+        , .hotend_target_c_x100 = 21000, .bed_temp_c_x100 = 6000
+        , .bed_target_c_x100 = 6000, .progress_percent = 50
+        , .elapsed_s = 120,
+    };
+    uint8_t payload[SLP_STATUS_UPDATE_WIRE_SIZE];
+    slp_status_update_encode(payload, &s);
+
+    uint8_t frame[SLP_FRAME_MAX];
+    size_t frame_len = slp_frame_encode(frame, SLP_MSG_STATUS_UPDATE, payload
+                                        , sizeof(payload));
+
+    struct slp_frame_scanner scanner = {0};
+    int r = slp_frame_check(&scanner, frame, (int)frame_len);
+    if (r != (int)frame_len)
+        return false;
+
+    struct slp_frame_view view;
+    if (slp_frame_view_init(&view, frame, r) != SLP_FRAME_OK)
+        return false;
+
+    struct slp_status_update out;
+    return slp_status_update_decode(view.payload, view.payload_len, &out)
+        && out.progress_percent == 50;
+}
+
 void
 app_main(void)
 {
@@ -63,4 +95,7 @@ app_main(void)
 
     ok = self_test_gcode();
     ESP_LOGI(TAG, "gcode-parser self-test: %s", ok ? "PASS" : "FAIL");
+
+    ok = self_test_shared_protocol();
+    ESP_LOGI(TAG, "shared-protocol self-test: %s", ok ? "PASS" : "FAIL");
 }

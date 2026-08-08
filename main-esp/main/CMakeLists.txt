@@ -6,4 +6,5 @@ idf_component_register(
     REQUIRES
         klipper-host-protocol
         gcode-parser
+        shared-protocol
 )
