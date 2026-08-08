@@ -13,6 +13,7 @@
 #include "slp_frame.h"
 #include "slp_messages.h"
 #include "link_watchdog.h"
+#include "cfg_parser.h"
 
 static const char *TAG = "main-esp";
 
@@ -102,6 +103,27 @@ self_test_safety(void)
     return link_watchdog_check(&wd, 2000) == LINK_OK;
 }
 
+static bool
+self_test_storage(void)
+{
+    static const char text[] =
+        "[extruder]\n"
+        "max_temp: 260\n"
+        "rotation_distance = 22.6789\n";
+    struct cfg_file cfg;
+    if (cfg_parse(text, strlen(text), &cfg) != CFG_OK)
+        return false;
+    const struct cfg_section *sec = cfg_find_section(&cfg, "extruder");
+    long max_temp;
+    if (!sec || !cfg_get_long(sec, "max_temp", &max_temp) || max_temp != 260)
+        return false;
+    // storage_sd_mount() is deliberately not exercised here -- it needs
+    // a real SD card/SDMMC peripheral to do anything meaningful, unlike
+    // this parser. See storage_sd.h's own "unverified against hardware"
+    // note.
+    return true;
+}
+
 void
 app_main(void)
 {
@@ -116,4 +138,7 @@ app_main(void)
 
     ok = self_test_safety();
     ESP_LOGI(TAG, "safety self-test: %s", ok ? "PASS" : "FAIL");
+
+    ok = self_test_storage();
+    ESP_LOGI(TAG, "storage self-test: %s", ok ? "PASS" : "FAIL");
 }

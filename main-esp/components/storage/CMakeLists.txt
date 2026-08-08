@@ -1,0 +1,11 @@
+idf_component_register(
+    SRCS
+        "src/cfg_parser.c"
+        "src/storage_sd.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        fatfs
+        esp_driver_sdmmc
+        sdmmc
+)

@@ -8,4 +8,5 @@ idf_component_register(
         gcode-parser
         shared-protocol
         safety
+        storage
 )
