@@ -4,9 +4,12 @@ idf_component_register(
         "src/msgblock.c"
         "src/identify.c"
         "src/dictionary.c"
+        "src/msgtable.c"
         "third_party/puff/puff.c"
     INCLUDE_DIRS
         "include"
+    REQUIRES
+        json
 )
 
 # puff.c is vendored verbatim (see third_party/puff/README.md) -- not

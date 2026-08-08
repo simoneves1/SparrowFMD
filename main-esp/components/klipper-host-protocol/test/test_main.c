@@ -1,14 +1,15 @@
 // Host-buildable unit tests for the klipper-host-protocol component.
 // Build with any C compiler, no ESP-IDF required:
-//   gcc -Wall -I../include -o khp_test test_main.c ../src/vlq.c
-//   ../src/msgblock.c ../src/identify.c ../src/dictionary.c
-//   ../third_party/puff/puff.c
+//   gcc -Wall -I../include -I../third_party/cJSON -o khp_test test_main.c
+//   ../src/vlq.c ../src/msgblock.c ../src/identify.c ../src/dictionary.c
+//   ../src/msgtable.c ../third_party/puff/puff.c ../third_party/cJSON/cJSON.c
 #include <stdio.h>
 #include <string.h>
 #include "khp_vlq.h"
 #include "khp_msgblock.h"
 #include "khp_identify.h"
 #include "khp_dictionary.h"
+#include "khp_msgtable.h"
 
 static int g_failures = 0;
 
@@ -364,6 +365,96 @@ test_dictionary_rejects_corrupted_stream(void)
          , st == KHP_DICT_INFLATE_ERROR || st == KHP_DICT_ADLER_MISMATCH);
 }
 
+static const char SAMPLE_DICT_JSON[] =
+    "{"
+    "\"version\":\"v0.12.0-1\","
+    "\"build_versions\":\"gcc-12\","
+    "\"commands\":{"
+        "\"identify offset=%u count=%u\":1,"
+        "\"get_uptime\":3"
+    "},"
+    "\"responses\":{"
+        "\"identify_response offset=%u data=%*s\":0,"
+        "\"uptime_response high=%u clock=%u\":4"
+    "},"
+    "\"output\":{"
+        "\"debug_ping\":2"
+    "},"
+    "\"enumerations\":{"
+        "\"pin\":{\"PA4\":4,\"PA5\":5},"
+        "\"spi_bus\":{\"spi0\":[0,3]}"
+    "}"
+    "}";
+
+static void
+test_msgtable_parse_sample(void)
+{
+    struct khp_msgtable t;
+    bool ok = khp_msgtable_parse(&t, SAMPLE_DICT_JSON
+                                 , sizeof(SAMPLE_DICT_JSON) - 1);
+    CHECK("msgtable parses the sample dictionary", ok);
+    if (!ok)
+        return;
+
+    CHECK("msgtable has all 5 command/response/output entries"
+         , t.entry_count == 5);
+    CHECK("msgtable version parsed", strcmp(t.version, "v0.12.0-1") == 0);
+    CHECK("msgtable build_versions parsed"
+         , strcmp(t.build_versions, "gcc-12") == 0);
+
+    const struct khp_msg_entry *e = khp_msgtable_find_by_name(&t, "identify");
+    CHECK("find_by_name('identify') found, right id/type/format"
+         , e && e->msgid == 1 && e->type == KHP_MSG_COMMAND
+           && strcmp(e->format, "identify offset=%u count=%u") == 0);
+
+    e = khp_msgtable_find_by_id(&t, 0);
+    CHECK("find_by_id(0) is identify_response, a response"
+         , e && strcmp(e->name, "identify_response") == 0
+           && e->type == KHP_MSG_RESPONSE);
+
+    e = khp_msgtable_find_by_id(&t, 2);
+    CHECK("find_by_id(2) is debug_ping, an output message"
+         , e && strcmp(e->name, "debug_ping") == 0
+           && e->type == KHP_MSG_OUTPUT);
+
+    CHECK("find_by_name of a nonexistent message returns NULL"
+         , khp_msgtable_find_by_name(&t, "no_such_command") == NULL);
+
+    int value = -1;
+    CHECK("enum lookup: pin/PA5 == 5"
+         , khp_msgtable_enum_value(&t, "pin", "PA5", &value) && value == 5);
+
+    CHECK("enum range expansion: spi_bus/spi0 == 0"
+         , khp_msgtable_enum_value(&t, "spi_bus", "spi0", &value) && value == 0);
+    CHECK("enum range expansion: spi_bus/spi2 == 2"
+         , khp_msgtable_enum_value(&t, "spi_bus", "spi2", &value) && value == 2);
+    CHECK("enum range expansion stops at count: spi_bus/spi3 not found"
+         , !khp_msgtable_enum_value(&t, "spi_bus", "spi3", &value));
+
+    CHECK("enum lookup in a nonexistent group fails"
+         , !khp_msgtable_enum_value(&t, "no_such_group", "x", &value));
+
+    khp_msgtable_free(&t);
+}
+
+static void
+test_msgtable_rejects_missing_commands(void)
+{
+    static const char no_commands[] = "{\"responses\":{},\"output\":{}}";
+    struct khp_msgtable t;
+    bool ok = khp_msgtable_parse(&t, no_commands, sizeof(no_commands) - 1);
+    CHECK("msgtable rejects a dictionary missing 'commands'", !ok);
+}
+
+static void
+test_msgtable_rejects_invalid_json(void)
+{
+    static const char garbage[] = "{not valid json";
+    struct khp_msgtable t;
+    bool ok = khp_msgtable_parse(&t, garbage, sizeof(garbage) - 1);
+    CHECK("msgtable rejects malformed JSON", !ok);
+}
+
 int
 main(void)
 {
@@ -381,6 +472,9 @@ main(void)
     test_dictionary_inflate_reference();
     test_dictionary_rejects_bad_header();
     test_dictionary_rejects_corrupted_stream();
+    test_msgtable_parse_sample();
+    test_msgtable_rejects_missing_commands();
+    test_msgtable_rejects_invalid_json();
 
     printf("\n%s (%d failure%s)\n"
           , g_failures ? "SOME TESTS FAILED" : "ALL TESTS PASSED"
