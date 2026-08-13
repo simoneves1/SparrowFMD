@@ -1,3 +1,4 @@
+#include <string.h>
 #include "slp_messages.h"
 
 static void
@@ -52,6 +53,16 @@ slp_status_update_encode(uint8_t *out, const struct slp_status_update *s)
     put_i16(p, s->bed_target_c_x100); p += 2;
     *p++ = s->progress_percent;
     put_u32(p, s->elapsed_s); p += 4;
+    // Copy+truncate, always null-terminate within the fixed field width.
+    size_t name_len = strlen(s->filename);
+    if (name_len > SLP_STATUS_UPDATE_FILENAME_LEN - 1)
+        name_len = SLP_STATUS_UPDATE_FILENAME_LEN - 1;
+    memcpy(p, s->filename, name_len);
+    memset(p + name_len, 0, SLP_STATUS_UPDATE_FILENAME_LEN - name_len);
+    p += SLP_STATUS_UPDATE_FILENAME_LEN;
+    put_u16(p, s->layer_current); p += 2;
+    put_u16(p, s->layer_total); p += 2;
+    put_u32(p, s->remaining_s); p += 4;
     return (size_t)(p - out);
 }
 
@@ -69,6 +80,12 @@ slp_status_update_decode(const uint8_t *payload, size_t payload_len
     out->bed_target_c_x100 = get_i16(p); p += 2;
     out->progress_percent = *p++;
     out->elapsed_s = get_u32(p); p += 4;
+    memcpy(out->filename, p, SLP_STATUS_UPDATE_FILENAME_LEN);
+    out->filename[SLP_STATUS_UPDATE_FILENAME_LEN - 1] = '\0';
+    p += SLP_STATUS_UPDATE_FILENAME_LEN;
+    out->layer_current = get_u16(p); p += 2;
+    out->layer_total = get_u16(p); p += 2;
+    out->remaining_s = get_u32(p); p += 4;
     return true;
 }
 
@@ -81,6 +98,7 @@ slp_control_command_encode(uint8_t *out, const struct slp_control_command *c)
     put_i16(p, c->jog_dy_mm_x100); p += 2;
     put_i16(p, c->jog_dz_mm_x100); p += 2;
     put_u16(p, c->jog_feedrate_mm_min); p += 2;
+    put_i16(p, c->target_temp_c_x100); p += 2;
     return (size_t)(p - out);
 }
 
@@ -96,5 +114,6 @@ slp_control_command_decode(const uint8_t *payload, size_t payload_len
     out->jog_dy_mm_x100 = get_i16(p); p += 2;
     out->jog_dz_mm_x100 = get_i16(p); p += 2;
     out->jog_feedrate_mm_min = get_u16(p); p += 2;
+    out->target_temp_c_x100 = get_i16(p); p += 2;
     return true;
 }

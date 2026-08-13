@@ -147,6 +147,10 @@ test_status_update_roundtrip(void)
         .bed_target_c_x100 = 6000,
         .progress_percent = 42,
         .elapsed_s = 3723,
+        .filename = "benchy.gcode",
+        .layer_current = 87,
+        .layer_total = 214,
+        .remaining_s = 5100,
     };
     uint8_t payload[SLP_STATUS_UPDATE_WIRE_SIZE];
     size_t n = slp_status_update_encode(payload, &s);
@@ -162,7 +166,11 @@ test_status_update_roundtrip(void)
            && out.bed_temp_c_x100 == s.bed_temp_c_x100
            && out.bed_target_c_x100 == s.bed_target_c_x100
            && out.progress_percent == s.progress_percent
-           && out.elapsed_s == s.elapsed_s);
+           && out.elapsed_s == s.elapsed_s
+           && strcmp(out.filename, s.filename) == 0
+           && out.layer_current == s.layer_current
+           && out.layer_total == s.layer_total
+           && out.remaining_s == s.remaining_s);
 
     CHECK("status_update decode rejects a truncated payload"
          , !slp_status_update_decode(payload, n - 1, &out));
@@ -177,6 +185,7 @@ test_control_command_roundtrip(void)
         .jog_dy_mm_x100 = 500,
         .jog_dz_mm_x100 = 0,
         .jog_feedrate_mm_min = 3000,
+        .target_temp_c_x100 = 0,
     };
     uint8_t payload[SLP_CONTROL_COMMAND_WIRE_SIZE];
     size_t n = slp_control_command_encode(payload, &c);
@@ -190,10 +199,51 @@ test_control_command_roundtrip(void)
            && out.jog_dx_mm_x100 == c.jog_dx_mm_x100
            && out.jog_dy_mm_x100 == c.jog_dy_mm_x100
            && out.jog_dz_mm_x100 == c.jog_dz_mm_x100
-           && out.jog_feedrate_mm_min == c.jog_feedrate_mm_min);
+           && out.jog_feedrate_mm_min == c.jog_feedrate_mm_min
+           && out.target_temp_c_x100 == c.target_temp_c_x100);
 
     CHECK("control_command decode rejects a truncated payload"
          , !slp_control_command_decode(payload, n - 1, &out));
+}
+
+static void
+test_control_command_set_temp_roundtrip(void)
+{
+    // SLP_CMD_SET_HOTEND_TEMP uses target_temp_c_x100; jog_* fields are
+    // don't-care for this command but still roundtrip byte-for-byte.
+    struct slp_control_command c = {
+        .command = SLP_CMD_SET_HOTEND_TEMP,
+        .target_temp_c_x100 = 21500, // 215.00C
+    };
+    uint8_t payload[SLP_CONTROL_COMMAND_WIRE_SIZE];
+    size_t n = slp_control_command_encode(payload, &c);
+
+    struct slp_control_command out;
+    bool ok = slp_control_command_decode(payload, n, &out);
+    CHECK("control_command SET_HOTEND_TEMP roundtrips target_temp_c_x100"
+         , ok && out.command == SLP_CMD_SET_HOTEND_TEMP
+           && out.target_temp_c_x100 == c.target_temp_c_x100);
+}
+
+static void
+test_control_command_filament_roundtrip(void)
+{
+    // Filament commands reuse jog_dz_mm_x100/jog_feedrate_mm_min as move
+    // distance/feedrate.
+    struct slp_control_command c = {
+        .command = SLP_CMD_FILAMENT_EXTRUDE,
+        .jog_dz_mm_x100 = 5000, // 50.00mm
+        .jog_feedrate_mm_min = 300,
+    };
+    uint8_t payload[SLP_CONTROL_COMMAND_WIRE_SIZE];
+    size_t n = slp_control_command_encode(payload, &c);
+
+    struct slp_control_command out;
+    bool ok = slp_control_command_decode(payload, n, &out);
+    CHECK("control_command FILAMENT_EXTRUDE roundtrips reused jog fields"
+         , ok && out.command == SLP_CMD_FILAMENT_EXTRUDE
+           && out.jog_dz_mm_x100 == c.jog_dz_mm_x100
+           && out.jog_feedrate_mm_min == c.jog_feedrate_mm_min);
 }
 
 static void
@@ -396,6 +446,8 @@ main(void)
     test_frame_resync();
     test_status_update_roundtrip();
     test_control_command_roundtrip();
+    test_control_command_set_temp_roundtrip();
+    test_control_command_filament_roundtrip();
     test_status_update_through_a_real_frame();
     test_session_poll_dispatches_multiple_frames();
     test_session_poll_drops_version_mismatch();
