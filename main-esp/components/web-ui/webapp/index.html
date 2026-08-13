@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SparrowFDM</title>
+<style>
+  :root {
+    --bg: #eef0ec;
+    --surface: #ffffff;
+    --surface-2: #e2e5de;
+    --border: #c7cbc0;
+    --text: #1c211c;
+    --text-dim: #5b6158;
+    --accent: #b5651d;
+    --accent-2: #2f6f5e;
+    --ok: #2f6f5e;
+    --warn: #b5821d;
+    --bad: #b3392c;
+    --shadow: 0 1px 2px rgba(20, 23, 20, 0.08), 0 8px 24px -12px rgba(20, 23, 20, 0.25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a;
+      --surface: #1c2024;
+      --surface-2: #23282c;
+      --border: #33393e;
+      --text: #e9ece7;
+      --text-dim: #9aa39c;
+      --accent: #d98a4a;
+      --accent-2: #5fb39c;
+      --ok: #5fb39c;
+      --warn: #e0b04a;
+      --bad: #e0665a;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    gap: 12px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .conn {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .conn .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--bad);
+  }
+  .conn.up .dot { background: var(--ok); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .state-pill {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+  }
+  .state-pill[data-state="printing"] { background: color-mix(in srgb, var(--ok) 18%, var(--surface)); color: var(--ok); }
+  .state-pill[data-state="paused"] { background: color-mix(in srgb, var(--warn) 22%, var(--surface)); color: var(--warn); }
+  .state-pill[data-state="error"] { background: color-mix(in srgb, var(--bad) 18%, var(--surface)); color: var(--bad); }
+  .state-pill[data-state="homing"] { background: color-mix(in srgb, var(--accent-2) 18%, var(--surface)); color: var(--accent-2); }
+
+  .elapsed {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  .progress-track {
+    width: 100%;
+    height: 10px;
+    background: var(--surface-2);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-2);
+    transition: width 0.3s ease;
+  }
+  .progress-label {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 18px;
+  }
+
+  .temps {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .temp {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .temp .name {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .temp .val {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 20px;
+  }
+  .temp .val .target {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin: 0 0 12px;
+  }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: filter 0.15s ease;
+  }
+  button:hover { filter: brightness(0.96); }
+  @media (prefers-color-scheme: dark) {
+    button:hover { filter: brightness(1.15); }
+  }
+  button:active { filter: brightness(0.9); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { background: var(--surface-2); border-color: var(--bad); color: var(--bad); }
+
+  .jog-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .jog-grid button {
+    padding: 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .jog-z {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .jog-layout {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .feedrate-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .feedrate-row input[type="range"] { flex: 1; }
+  .feedrate-row .val {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    min-width: 70px;
+    text-align: right;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>SparrowFDM</h1>
+    <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">connecting&hellip;</span></div>
+  </header>
+
+  <div class="card">
+    <div class="status-row">
+      <span class="state-pill" id="state-pill" data-state="idle">idle</span>
+      <span class="elapsed" id="elapsed">00:00:00</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-label" id="progress-label">0%</div>
+    <div class="temps">
+      <div class="temp">
+        <div class="name">Hotend</div>
+        <div class="val"><span id="hotend-temp">--.-</span>&deg; <span class="target">&rarr; <span id="hotend-target">--.-</span>&deg;</span></div>
+      </div>
+      <div class="temp">
+        <div class="name">Bed</div>
+        <div class="val"><span id="bed-temp">--.-</span>&deg; <span class="target">&rarr; <span id="bed-target">--.-</span>&deg;</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Print control</h2>
+    <div class="btn-row">
+      <button class="primary" id="btn-start">Start</button>
+      <button id="btn-pause">Pause</button>
+      <button id="btn-resume">Resume</button>
+      <button class="danger" id="btn-stop">Stop</button>
+      <button id="btn-home">Home</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Jog</h2>
+    <div class="jog-layout">
+      <div class="jog-grid">
+        <span></span><button data-dx="0" data-dy="1">&#8593;</button><span></span>
+        <button data-dx="-1" data-dy="0">&#8592;</button><span></span><button data-dx="1" data-dy="0">&#8594;</button>
+        <span></span><button data-dx="0" data-dy="-1">&#8595;</button><span></span>
+      </div>
+      <div class="jog-z">
+        <button data-dz="1">Z&#8593;</button>
+        <button data-dz="-1">Z&#8595;</button>
+      </div>
+    </div>
+    <div class="feedrate-row">
+      <label for="jog-step">Step</label>
+      <input type="range" id="jog-step" min="0.1" max="50" step="0.1" value="10">
+      <span class="val" id="jog-step-val">10.0 mm</span>
+    </div>
+  </div>
+
+  <footer>ws://<span id="ws-host"></span>/ws</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STATE_LABELS = { idle: "Idle", homing: "Homing", printing: "Printing", paused: "Paused", error: "Error" };
+  var RECONNECT_MS = 2000;
+
+  var connEl = document.getElementById("conn");
+  var connTextEl = document.getElementById("conn-text");
+  var statePillEl = document.getElementById("state-pill");
+  var elapsedEl = document.getElementById("elapsed");
+  var progressFillEl = document.getElementById("progress-fill");
+  var progressLabelEl = document.getElementById("progress-label");
+  var hotendTempEl = document.getElementById("hotend-temp");
+  var hotendTargetEl = document.getElementById("hotend-target");
+  var bedTempEl = document.getElementById("bed-temp");
+  var bedTargetEl = document.getElementById("bed-target");
+  var jogStepInput = document.getElementById("jog-step");
+  var jogStepVal = document.getElementById("jog-step-val");
+
+  document.getElementById("ws-host").textContent = location.host;
+
+  function fmtElapsed(totalSeconds) {
+    var s = Math.max(0, totalSeconds | 0);
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var sec = s % 60;
+    function pad(n) { return n < 10 ? "0" + n : "" + n; }
+    return pad(h) + ":" + pad(m) + ":" + pad(sec);
+  }
+
+  function applyStatus(msg) {
+    statePillEl.textContent = STATE_LABELS[msg.state] || msg.state;
+    statePillEl.setAttribute("data-state", msg.state);
+    elapsedEl.textContent = fmtElapsed(msg.elapsed_s);
+    var pct = Math.max(0, Math.min(100, msg.progress));
+    progressFillEl.style.width = pct + "%";
+    progressLabelEl.textContent = pct + "%";
+    hotendTempEl.textContent = msg.hotend_temp.toFixed(1);
+    hotendTargetEl.textContent = msg.hotend_target.toFixed(1);
+    bedTempEl.textContent = msg.bed_temp.toFixed(1);
+    bedTargetEl.textContent = msg.bed_target.toFixed(1);
+  }
+
+  var socket = null;
+
+  function setConnected(up) {
+    connEl.classList.toggle("up", up);
+    connTextEl.textContent = up ? "connected" : "reconnecting…";
+  }
+
+  function connect() {
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(proto + "//" + location.host + "/ws");
+
+    socket.onopen = function () { setConnected(true); };
+    socket.onclose = function () {
+      setConnected(false);
+      setTimeout(connect, RECONNECT_MS);
+    };
+    socket.onerror = function () { socket.close(); };
+    socket.onmessage = function (ev) {
+      var msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg && msg.type === "status") applyStatus(msg);
+    };
+  }
+
+  function send(obj) {
+    if (socket && socket.readyState === WebSocket.OPEN)
+      socket.send(JSON.stringify(obj));
+  }
+
+  function sendCommand(command) { send({ type: "command", command: command }); }
+
+  document.getElementById("btn-start").addEventListener("click", function () { sendCommand("start"); });
+  document.getElementById("btn-pause").addEventListener("click", function () { sendCommand("pause"); });
+  document.getElementById("btn-resume").addEventListener("click", function () { sendCommand("resume"); });
+  document.getElementById("btn-stop").addEventListener("click", function () { sendCommand("stop"); });
+  document.getElementById("btn-home").addEventListener("click", function () { sendCommand("home"); });
+
+  jogStepInput.addEventListener("input", function () {
+    jogStepVal.textContent = parseFloat(jogStepInput.value).toFixed(1) + " mm";
+  });
+
+  document.querySelectorAll(".jog-grid button[data-dx], .jog-grid button[data-dy]")
+    .forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var step = parseFloat(jogStepInput.value);
+        var dx = parseFloat(btn.getAttribute("data-dx") || "0") * step;
+        var dy = parseFloat(btn.getAttribute("data-dy") || "0") * step;
+        send({ type: "command", command: "jog", jog_dx: dx, jog_dy: dy, jog_dz: 0, jog_feedrate: 3000 });
+      });
+    });
+
+  document.querySelectorAll(".jog-z button[data-dz]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var step = parseFloat(jogStepInput.value);
+      var dz = parseFloat(btn.getAttribute("data-dz")) * step;
+      send({ type: "command", command: "jog", jog_dx: 0, jog_dy: 0, jog_dz: dz, jog_feedrate: 600 });
+    });
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>

@@ -6,6 +6,22 @@
 
 static const char *TAG = "web_server";
 
+// webapp/index.html, embedded into the firmware image by the component's
+// EMBED_TXTFILES (see CMakeLists.txt) -- served as-is for "/" below, no
+// SPIFFS/SD-card dependency to view the UI. EMBED_TXTFILES null-terminates
+// the embedded data, so _end - _start - 1 is the string length (excluding
+// that trailing NUL).
+extern const uint8_t webapp_index_html_start[] asm("_binary_index_html_start");
+extern const uint8_t webapp_index_html_end[] asm("_binary_index_html_end");
+
+static esp_err_t
+index_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    size_t len = (size_t)(webapp_index_html_end - webapp_index_html_start) - 1;
+    return httpd_resp_send(req, (const char *)webapp_index_html_start, len);
+}
+
 // Matches HTTPD_DEFAULT_CONFIG()'s max_open_sockets (7); rounded up by
 // one for headroom. If web_server_start() is ever changed to configure
 // a larger max_open_sockets, this needs to grow to match.
@@ -89,6 +105,17 @@ web_server_start(const struct web_server_config *cfg)
     };
     if (httpd_register_uri_handler(server, &ws_uri) != ESP_OK) {
         ESP_LOGE(TAG, "failed to register /ws handler");
+        httpd_stop(server);
+        return NULL;
+    }
+
+    httpd_uri_t index_uri = {
+        .uri = "/",
+        .method = HTTP_GET,
+        .handler = index_handler,
+    };
+    if (httpd_register_uri_handler(server, &index_uri) != ESP_OK) {
+        ESP_LOGE(TAG, "failed to register / handler");
         httpd_stop(server);
         return NULL;
     }

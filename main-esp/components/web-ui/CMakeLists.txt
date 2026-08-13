@@ -7,4 +7,6 @@ idf_component_register(
     REQUIRES
         json
         esp_http_server
+    EMBED_TXTFILES
+        "webapp/index.html"
 )

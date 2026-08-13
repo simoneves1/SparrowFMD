@@ -12,11 +12,14 @@
 // browser, or a real WebSocket client. Treat it as a skeleton to build
 // on and test against real hardware, not as verified working code.
 //
-// Also not done: serving the actual UI's static files (HTML/CSS/JS).
-// This only wires up the WebSocket endpoint; static file serving is a
-// separate, unstarted piece (likely serving from SPIFFS/the SD card
-// once storage's real file I/O is exercised, or embedding small assets
-// directly in flash -- an open question, not decided here).
+// Static file serving is done: "/" serves webapp/index.html, embedded
+// directly into the firmware image via this component's EMBED_TXTFILES
+// (see CMakeLists.txt) -- no SPIFFS/SD-card dependency to view the UI.
+// It's a single self-contained HTML/CSS/JS file (no build step, no
+// framework) that speaks web_api.h's JSON contract directly over "/ws".
+// Same unverified-against-real-hardware caveat as the rest of this file
+// applies to it too -- no real browser has loaded it from a real device
+// yet.
 #ifndef WEB_SERVER_H
 #define WEB_SERVER_H
 
