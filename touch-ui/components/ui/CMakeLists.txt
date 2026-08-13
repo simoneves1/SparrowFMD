@@ -1,0 +1,14 @@
+idf_component_register(
+    SRCS
+        "src/ui.c"
+        "src/ui_chrome.c"
+        "src/screen_status.c"
+        "src/screen_jog.c"
+        "src/screen_files.c"
+        "src/screen_macros.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        display-driver
+        shared-protocol
+)

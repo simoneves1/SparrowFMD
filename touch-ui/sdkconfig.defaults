@@ -1,0 +1,12 @@
+# This board (4.0inch ESP32-32E display) actually has 4MB flash, not
+# the 2MB idf.py set-target esp32 defaults to. See PINOUT.md.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Without this, LVGL's RGB565 buffers are byte-order-mismatched against
+# what esp_lcd sends this ST7796 panel over SPI -- real content renders as
+# color-shifted noise (strong green tint, since green's bits straddle both
+# bytes of RGB565) even though raw esp_lcd_panel_draw_bitmap() calls (e.g.
+# the orientation diagnostic in main.c) look fine, since those bypass LVGL
+# entirely. Found via real hardware: LVGL-rendered screens were corrupted,
+# the pre-LVGL diagnostic screen was not.
+CONFIG_LV_COLOR_16_SWAP=y

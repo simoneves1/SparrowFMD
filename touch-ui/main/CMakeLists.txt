@@ -5,4 +5,6 @@ idf_component_register(
         "."
     REQUIRES
         shared-protocol
+        display-driver
+        ui
 )

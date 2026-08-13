@@ -1,0 +1,3 @@
+dependencies:
+  espressif/esp_lcd_st7796: "^1.4.0"
+  atanisoft/esp_lcd_touch_xpt2046: "^1.0.6"
