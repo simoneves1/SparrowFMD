@@ -1,9 +1,10 @@
 // A minimal byte-stream transport interface, so khp_session (the
 // message-framing/dispatch loop) doesn't need to know whether it's
 // running over a UART, USB CDC-ACM, or -- for testing -- an in-memory
-// mock. Implementations: khp_uart_transport.h (real, ESP-IDF UART,
-// unverified against hardware -- see its own doc comment) and whatever
-// test code constructs directly for unit tests.
+// mock. Implementations: khp_uart_transport.h (real, ESP-IDF UART) and
+// khp_usb_cdc_transport.h (real, ESP-IDF USB Host CDC-ACM) -- both
+// unverified against hardware, see their own doc comments -- and
+// whatever test code constructs directly for unit tests.
 #ifndef KHP_TRANSPORT_H
 #define KHP_TRANSPORT_H
 
