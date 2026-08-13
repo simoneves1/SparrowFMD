@@ -2,9 +2,10 @@
 
 Firmware for the ESP32-P4 "brain" board. Targets ESP-IDF.
 
-See `src/README.md` for the module breakdown. See the pin-assignment
-guide (separate doc) for GPIO planning — needs to be finalized once the
-specific P4 board/module is confirmed.
+See `src/README.md` for the module breakdown. See `PINOUT.md` for GPIO
+planning against the JC-ESP32P4-M3-DEV dev board — UART links and CAN are
+assigned; SD/Ethernet exact pin numbers and the dual-USB-host question
+are still open, see that doc.
 
 ## Runtime config, not compile-time
 Per-printer settings (which boards are attached, kinematics type, pin
