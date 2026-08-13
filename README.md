@@ -44,9 +44,20 @@ concrete ESP-IDF UART implementation of it. That UART transport is
 explicitly **unverified against real hardware** — it cross-compiles,
 nothing more — and it's the wrong transport for talking to third-party
 boards anyway (that needs USB CDC-ACM, not UART; the UART transport
-serves the touch-ui/ams-esp `uart-links` case instead). USB CDC-ACM for
-Octopus/toolhead-board communication is still a separate, unstarted,
-meaningfully larger piece of work.
+serves the touch-ui/ams-esp `uart-links` case instead).
+
+A USB CDC-ACM transport (`khp_usb_cdc_transport`) now exists for that
+Octopus/toolhead-board case: it layers ESP-IDF's built-in `usb` (USB
+Host Library) component and Espressif's managed `usb_host_cdc_acm`
+class driver behind the same `khp_transport` interface `khp_uart_transport`
+implements, so `khp_session` doesn't need to care which one it's talking
+to. It cross-compiles for both esp32p4 and esp32s3 (component-manager
+dependency resolves and builds clean for both), but carries the same
+**unverified against real hardware** caveat — no real USB device has
+been enumerated against it, nothing has run on a real Klipper MCU
+board's CDC-ACM endpoint. Device selection is by VID/PID (or
+`CDC_HOST_ANY_*` for a single point-to-point link with no hub); only
+one USB link per process is supported for now.
 
 `gcode-parser` is also done and unit-tested: turns a line of G-code
 text into a command word + parameters, staying deliberately ignorant of
@@ -93,15 +104,82 @@ binary frames -- same ideas, kept in sync by design intent, no code
 dependency between the two. Its `web_server` HTTP+WebSocket server is a
 concrete ESP-IDF `esp_http_server` skeleton with the same **unverified
 against real hardware** caveat as `khp_uart_transport`/`storage_sd`.
-Serving the UI's actual static files isn't done yet either.
+Static file serving is now done too: a real, self-contained HTML/CSS/JS
+frontend (`web-ui/webapp/index.html` -- no build step, no framework)
+is embedded directly into the firmware image via `EMBED_TXTFILES` and
+served at "/", speaking `web_api.h`'s JSON contract over the existing
+"/ws" endpoint (status display, start/stop/pause/resume/home, a jog
+pad). Compiles clean for both esp32p4 and esp32s3; same unverified-
+against-real-hardware caveat as the rest of `web_server.c` -- no real
+browser has loaded it from a real device yet.
 
-`touch-ui` now has a real ESP-IDF project (targeting esp32s3) that
-builds clean and consumes shared-protocol -- still just a boot self-test
-in `main.c`, no display/touch driver or real UART wiring yet, but no
-longer just design notes. `ams-esp` still is, and remains post-v1.
+`touch-ui` now has a real ESP-IDF project (retargeted from an initial
+esp32s3 guess to plain esp32, matching the first real hardware picked --
+see touch-ui/README.md and touch-ui/PINOUT.md) that builds clean and
+consumes shared-protocol, plus a `display-driver` component wrapping
+managed `esp_lcd_st7796`/`esp_lcd_touch_xpt2046` drivers for that
+hardware (a 4.0inch ESP32-32E "cheap yellow display" clone). Flashed and
+run on the real board repeatedly, including finding and fixing two real
+hardware/config issues rather than just a first-try success: (1) this
+specific panel's glass is bonded rotated relative to the ST7796 driver's
+default scan order -- found via a 4-corner color diagnostic (a solid
+fill can't reveal rotation; a rotated solid fill still looks solid) read
+against real photos, fixed with `esp_lcd_panel_swap_xy`+`mirror` in
+`display-driver`; (2) the `ui` component was redesigned from an initial
+portrait 3-screen guess to match a real design pass -- the "SparrowFDM
+Operator UI mockup" -- as landscape 480x320 with a 4-tab nav (Status,
+Jog, Files, Macros), which then exposed LVGL's 32KB memory pool (sized
+for the old simpler design) running out mid-boot and hanging the
+watchdog; bumped to 96KB against this board's actual free-heap numbers,
+confirmed fixed. Status and Jog are wired to real `slp_control_command`s
+(pause/resume/stop, jog/home/start); Files and Macros are partly UI-only
+stubs where `slp_messages.h` has no wire format yet (file listings, a
+"bed mesh" command) -- see touch-ui/README.md for exactly which parts
+are real vs. stubbed. No real UART wiring
+to main-esp yet -- that needs a second UART peripheral pin choice on
+this board (its UART0 is claimed by the USB-serial bridge), and
+main-esp's own board (P4) hasn't been purchased yet. `ams-esp` remains
+post-v1 design notes only.
 
 Everything else in main-esp is still just per-module design notes (see
 `main-esp/src/README.md`).
+
+A float32 prototype of chelper's hot path (`trapq`/`itersolve`/
+`kin_cartesian`, mechanically ported from Klipper's `double`-based source)
+was tried as a possible fix for the P4's lack of hardware double-precision
+FPU. A first attempt hit a real correctness problem: `itersolve.c`'s
+convergence epsilons are calibrated for double precision (1e-9), which is
+unrepresentable in float32 at realistic bed-scale coordinates/print
+durations; loosening them to a single fixed, representable value (~1e-4)
+avoided that but caused ~80% step-count inflation (spurious/duplicate step
+commands), because that epsilon wasn't tight enough relative to a real
+microstepping `half_step` distance. A second attempt replaced the fixed
+epsilon with an adaptive one -- the larger of a tolerance relative to
+`half_step` and float32's own representable-ULP floor at the magnitude in
+play -- and **resolved it**: a host-native sanity sweep across realistic bed
+sizes (0-500mm) and print durations (start of print to 72 hours in) matched
+the expected step count/timing to within a fraction of a percent, with
+relative step-to-step spacing confirmed magnitude-independent (Klipper's
+own algorithm rebases to move-local time before the precision-sensitive
+math, insulating it from how large absolute print_time has grown). Only the
+*absolute* step timestamp carries a small, bounded, unavoidable storage
+error from print_time living in a float32 struct field (tens to a couple
+hundred microseconds over a multi-hour print) -- a known, separate property,
+not shown to affect motion smoothness. **Verdict: the correctness blocker
+is resolved** -- the open question below is back to being purely a speed
+question (does it run fast enough on the P4's hardware float32 FPU). That
+speed question is deliberately on hold: the QEMU install here only supports
+the C3 machine, and the C3 has no hardware FPU at all, so timing this
+float32 port under C3/QEMU would only measure software emulation speed --
+not the P4 hardware-FPU behavior this whole prototype exists to test, so it
+wouldn't be a trustworthy answer. Static disassembly-based cycle estimation
+was considered as a fallback but also deferred -- real P4 hardware, once
+available, gives a real measurement instead of an estimate either way.
+Unlike the first (negative) prototype's spike directory, this one's code
+(`main-esp/benchmarks/chelper-p4-float32-v2/`) is being kept in the tree
+rather than deleted, since the adaptive-epsilon fix is a real result worth
+not re-deriving from scratch when hardware arrives -- see that directory's
+own RESULTS.md for the full writeup.
 
 Only one board is actually planned (P4), but see main-esp/README.md's
 "Designed to not lock into one chip" note: nothing in the application
@@ -112,20 +190,30 @@ that switching chips, if the P4 kinematics question forces it, shouldn't
 require rewriting application logic.
 
 ## Roadmap / TODO
-- [ ] Resolve the kinematics question above — prototype a float32 port
-      of chelper's hot path, or get real P4 hardware/timing data
-- [ ] Pick the specific P4 board/module, finalize the pin-assignment
-      guide (currently blocked on that choice)
+- [x] Prototype a float32 port of chelper's hot path — first attempt hit
+      a correctness blocker, second attempt (adaptive epsilon) resolved
+      it, see Status
+- [ ] Resolve the kinematics question above — now purely a speed
+      question: get real P4 timing data for the float32 port (deliberately
+      waiting for real hardware rather than an emulated/estimated number,
+      see Status — the available QEMU can't exercise the P4's hardware FPU)
+- [x] Pick the specific P4 board/module for development — Guition
+      JC-ESP32P4-M3-DEV; UART-link and CAN pin assignments done, see
+      `main-esp/PINOUT.md`. SD/Ethernet exact pin numbers and the
+      dual-USB-host-port question (Octopus + toolhead both need USB host)
+      are still open
 - [x] `main-esp`: `klipper-host-protocol` — framing, identify handshake,
       dictionary decompression/parsing, generic message encode/decode
 - [x] `main-esp`: `klipper-host-protocol` — transport skeleton
       (khp_session, tested; khp_uart_transport, unverified against
       hardware — see Status)
-- [ ] `main-esp`: `klipper-host-protocol` — USB CDC-ACM transport for
-      talking to third-party boards (Octopus, toolhead boards); UART
-      transport above doesn't satisfy this
-- [ ] Validate `khp_uart_transport` and the rest of
-      `klipper-host-protocol` against real hardware once available
+- [x] `main-esp`: `klipper-host-protocol` — USB CDC-ACM transport
+      (`khp_usb_cdc_transport`) for talking to third-party boards
+      (Octopus, toolhead boards); cross-compiles for esp32p4/esp32s3,
+      unverified against real hardware — see Status
+- [ ] Validate `khp_uart_transport`, `khp_usb_cdc_transport`, and the
+      rest of `klipper-host-protocol` against real hardware once
+      available
 - [x] `main-esp`: `gcode-parser` module
 - [ ] `main-esp`: `kinematics` module (blocked on the open question above)
 - [x] `main-esp`: `safety` module — link watchdog/heartbeat to
@@ -134,19 +222,53 @@ require rewriting application logic.
       unverified against hardware — see Status
 - [ ] Validate `storage_sd` against real hardware once available
 - [x] `main-esp`: `web-ui` module — JSON WebSocket API tested; HTTP
-      server unverified against hardware; static file serving not done
-- [ ] Validate `web_server` against real hardware once available
+      server unverified against hardware; static file serving done (a
+      real embedded HTML/CSS/JS frontend at "/", see Status)
+- [ ] Validate `web_server` (including the new frontend) against real
+      hardware once available
 - [x] `shared`: UART message schema + version/compatibility tagging
       between independently-flashed boards
 - [x] `shared-protocol`: transport-agnostic session layer (tested) +
       concrete UART transport (unverified against hardware)
-- [x] `touch-ui`: real ESP-IDF project scaffolded (esp32s3), consumes
-      shared-protocol; no display/input logic or real UART wiring yet
-- [ ] `touch-ui`: display/touch driver + real UART client against
-      `main-esp`'s `uart-links` module
+- [x] `touch-ui`: real ESP-IDF project, retargeted esp32s3 → esp32 to
+      match first real hardware, consumes shared-protocol
+- [x] `touch-ui`: `display-driver` component (ST7796 panel +
+      XPT2046 touch, 4.0inch ESP32-32E board) — flashed and run on real
+      hardware: panel init + full-screen fill render correctly, touch
+      controller responds over SPI. Orientation initially looked correct
+      from a solid fill, but that was a false negative -- a rotated
+      solid fill still looks solid. A 4-corner color diagnostic (see
+      Status) found this panel's glass really is bonded rotated;
+      `esp_lcd_panel_swap_xy`+`mirror` in `display-driver` now corrects
+      it, confirmed against two real photos (portrait, then again after
+      the landscape pivot below). Touch coordinate accuracy from a real
+      finger press still unverified
+- [x] `touch-ui`: `ui` component — redesigned from an initial portrait
+      3-screen guess to landscape 480x320 with a 4-tab nav (Status, Jog,
+      Files, Macros) matching the "SparrowFDM Operator UI mockup" design
+      pass; `ui_theme.h`/`ui_chrome.c` centralize the palette and shared
+      top/tab bars. Status and Jog wired to real `slp_control_command`s;
+      Files/Macros partly UI-only where `slp_messages.h` has no wire
+      format yet (file listings, "bed mesh"). Build- and
+      hardware-verified: fixed an LVGL-v8-vs-v9 `esp_lvgl_port` struct
+      field mismatch, found and fixed the panel orientation bug above,
+      then found and fixed LVGL's 32KB memory pool (sized for the old
+      design) running out mid-boot and hanging the watchdog once all 5
+      screens were built eagerly -- bumped to 96KB. Boot log now
+      confirms all 4 tab screens build and the canned demo status
+      renders, no crash
+- [ ] Interactive verification on the physical panel: actual touch
+      coordinate accuracy from a finger press, and nav between the 4 tab
+      screens (+ Files' print-confirm subpage) via real taps (boot log
+      only confirms the initial Status screen renders, not interaction)
+- [ ] `touch-ui`: real UART client against `main-esp`'s `uart-links`
+      module — needs a second UART peripheral pin choice, see
+      touch-ui/PINOUT.md's open question, and main-esp's own board (P4)
+      hasn't been purchased yet so this can't be tested end-to-end regardless
 - [ ] `ams-esp`: post-v1 — spool selector, runout sensing, swap-at-pause
 
 ## License
 [GPLv3](LICENSE), matching Klipper's own license — this project speaks
 Klipper's host↔MCU protocol and may incorporate or derive from Klipper's
 chelper code.
+22
