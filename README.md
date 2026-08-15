@@ -96,22 +96,36 @@ SD-card mount is a concrete ESP-IDF SDMMC+FATFS skeleton with the same
 **unverified against real hardware** caveat as `khp_uart_transport` --
 cross-compiles, nothing more.
 
-`web-ui`'s JSON WebSocket API (`web_api`) is also done and unit-tested:
-status/control messages covering the same domain concepts as
-shared-protocol's status_update/control_command, but as JSON for
-browser/farm-server clients rather than shared-protocol's compact
-binary frames -- same ideas, kept in sync by design intent, no code
-dependency between the two. Its `web_server` HTTP+WebSocket server is a
-concrete ESP-IDF `esp_http_server` skeleton with the same **unverified
-against real hardware** caveat as `khp_uart_transport`/`storage_sd`.
-Static file serving is now done too: a real, self-contained HTML/CSS/JS
-frontend (`web-ui/webapp/index.html` -- no build step, no framework)
-is embedded directly into the firmware image via `EMBED_TXTFILES` and
-served at "/", speaking `web_api.h`'s JSON contract over the existing
-"/ws" endpoint (status display, start/stop/pause/resume/home, a jog
-pad). Compiles clean for both esp32p4 and esp32s3; same unverified-
-against-real-hardware caveat as the rest of `web_server.c` -- no real
-browser has loaded it from a real device yet.
+`web-ui`'s JSON WebSocket/HTTP API (`web_api`) has grown well past the
+original status/control_command parity with shared-protocol, unit-tested
+throughout (40+ host-buildable test cases): status now carries
+filename/layer/remaining-time and Tune-panel state (speed/flow
+factor, Z-offset); control_command covers start-with-filename,
+temp-set/filament commands (matching touch-ui's Macros screen), raw
+"gcode" lines for a Console page, and the 3 Tune commands; three plain
+HTTP endpoints (`GET /api/files`, `GET/POST /api/camera`,
+`GET/POST /api/settings`) round out file listing, camera source
+configuration, and raw printer.cfg-style config text, all documented in
+`web_api.h`'s top comment. `web_server.c` (the concrete ESP-IDF
+`esp_http_server` implementation) has the same **unverified against real
+hardware** caveat as `khp_uart_transport`/`storage_sd` -- it cross-compiles
+for both esp32p4 and esp32s3, and (new) `main-esp/main/main.c` now
+actually calls `web_server_start()` on boot with real callbacks wired to
+`cfg_parser` (in-RAM only, not persisted) rather than leaving it
+permanently uncalled -- but the server is still unreachable until a
+network driver (WiFi or Ethernet) is wired up, which hasn't happened
+yet. `web-ui/webapp/index.html` (a real, self-contained HTML/CSS/JS
+frontend, no build step, no framework, embedded into the firmware image
+via `EMBED_TXTFILES`) grew alongside the API: a tabbed layout (Status --
+temps/progress/print control/Tune/Camera/Jog/Macros together, per
+explicit direction to keep those grouped rather than fragmented across
+tabs -- Files, Console, Settings), a Files gallery (tap a tile to start
+that file), a Console with a live response log, and a Settings page with
+both a structured Camera config form and the raw config-text editor.
+Verified end-to-end against a hand-rolled local mock WebSocket/HTTP
+server (not ESP-IDF, a throwaway Node script) driving the real page in a
+real browser -- confirms the frontend/JSON contract works together, but
+is not a substitute for a real device test, which hasn't happened yet.
 
 `touch-ui` now has a real ESP-IDF project (retargeted from an initial
 esp32s3 guess to plain esp32, matching the first real hardware picked --
@@ -221,11 +235,15 @@ require rewriting application logic.
 - [x] `main-esp`: `storage` module — cfg_parser tested; SD mount
       unverified against hardware — see Status
 - [ ] Validate `storage_sd` against real hardware once available
-- [x] `main-esp`: `web-ui` module — JSON WebSocket API tested; HTTP
-      server unverified against hardware; static file serving done (a
-      real embedded HTML/CSS/JS frontend at "/", see Status)
-- [ ] Validate `web_server` (including the new frontend) against real
-      hardware once available
+- [x] `main-esp`: `web-ui` module — JSON WebSocket/HTTP API tested
+      (status/control_command, files/camera/settings endpoints,
+      Console/Tune commands); full tabbed frontend (Status/Files/Console/
+      Settings) built and mock-server-verified; `main.c` now starts the
+      server on boot, see Status
+- [ ] Wire a network driver (WiFi or Ethernet) so the web server is
+      actually reachable — currently starts but binds to nothing
+- [ ] Validate `web_server` + the frontend against real hardware/a real
+      browser once available
 - [x] `shared`: UART message schema + version/compatibility tagging
       between independently-flashed boards
 - [x] `shared-protocol`: transport-agnostic session layer (tested) +

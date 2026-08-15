@@ -10,4 +10,7 @@ idf_component_register(
         safety
         storage
         web-ui
+        esp_netif
+        esp_event
+        esp_timer
 )
