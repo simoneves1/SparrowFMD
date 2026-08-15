@@ -74,6 +74,31 @@
   }
   .conn.up .dot { background: var(--ok); }
 
+  .tabbar {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tabbar button {
+    flex-shrink: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 8px 14px 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tabbar button:hover { filter: none; color: var(--text); }
+  .tabbar button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -130,8 +155,22 @@
     font-variant-numeric: tabular-nums;
     font-size: 12px;
     color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .print-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-dim);
     margin-bottom: 18px;
   }
+  .print-meta span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .print-meta span:empty { display: none; }
 
   .temps {
     display: grid;
@@ -233,6 +272,149 @@
     text-align: right;
   }
 
+  .tune-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .tune-row:last-child { margin-bottom: 0; }
+  .tune-row label { color: var(--text-dim); width: 60px; flex-shrink: 0; }
+  .tune-row input[type="number"] {
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    width: 80px;
+  }
+  .tune-row .tune-unit { color: var(--text-dim); flex-shrink: 0; }
+  .tune-row button { margin-left: auto; }
+
+  .console-log {
+    height: 260px;
+    overflow-y: auto;
+    background: var(--surface-2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .console-log .sent { color: var(--accent-2); }
+  .console-input-row { display: flex; gap: 8px; }
+  .console-input-row input[type="text"] {
+    flex: 1;
+    font: inherit;
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .camera-box {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: var(--surface-2);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .camera-box img { width: 100%; height: 100%; object-fit: contain; }
+
+  .file-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+  }
+  .file-list-empty { color: var(--text-dim); font-size: 13px; }
+  .file-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 10px 12px;
+    background: var(--surface-2);
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .file-tile:hover { filter: brightness(0.96); }
+  @media (prefers-color-scheme: dark) {
+    .file-tile:hover { filter: brightness(1.15); }
+  }
+  .file-tile .icon { font-size: 28px; color: var(--text-dim); }
+  .file-tile .name {
+    font-size: 13px;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-tile .meta {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .field-row label { color: var(--text-dim); flex-shrink: 0; }
+  .field-row select, .field-row input[type="text"] {
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+  }
+  .field-row.hidden { display: none; }
+
+  textarea#settings-text {
+    width: 100%;
+    min-height: 160px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 13px;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    resize: vertical;
+  }
+  .settings-status {
+    font-size: 12px;
+    color: var(--text-dim);
+    align-self: center;
+  }
+  .settings-status.ok { color: var(--ok); }
+  .settings-status.error { color: var(--bad); }
+
   footer {
     text-align: center;
     font-size: 11px;
@@ -249,55 +431,162 @@
     <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">connecting&hellip;</span></div>
   </header>
 
-  <div class="card">
-    <div class="status-row">
-      <span class="state-pill" id="state-pill" data-state="idle">idle</span>
-      <span class="elapsed" id="elapsed">00:00:00</span>
-    </div>
-    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-    <div class="progress-label" id="progress-label">0%</div>
-    <div class="temps">
-      <div class="temp">
-        <div class="name">Hotend</div>
-        <div class="val"><span id="hotend-temp">--.-</span>&deg; <span class="target">&rarr; <span id="hotend-target">--.-</span>&deg;</span></div>
-      </div>
-      <div class="temp">
-        <div class="name">Bed</div>
-        <div class="val"><span id="bed-temp">--.-</span>&deg; <span class="target">&rarr; <span id="bed-target">--.-</span>&deg;</span></div>
-      </div>
-    </div>
-  </div>
+  <nav class="tabbar" id="tabbar">
+    <button data-page="status" class="active">Status</button>
+    <button data-page="files">Files</button>
+    <button data-page="console">Console</button>
+    <button data-page="settings">Settings</button>
+  </nav>
 
-  <div class="card">
-    <h2>Print control</h2>
-    <div class="btn-row">
-      <button class="primary" id="btn-start">Start</button>
-      <button id="btn-pause">Pause</button>
-      <button id="btn-resume">Resume</button>
-      <button class="danger" id="btn-stop">Stop</button>
-      <button id="btn-home">Home</button>
+  <section class="page active" data-page="status">
+    <div class="card">
+      <div class="status-row">
+        <span class="state-pill" id="state-pill" data-state="idle">idle</span>
+        <span class="elapsed" id="elapsed">00:00:00</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-label" id="progress-label">0%</div>
+      <div class="print-meta" id="print-meta">
+        <span id="print-filename">&mdash;</span>
+        <span id="print-layer"></span>
+        <span id="print-remaining"></span>
+      </div>
+      <div class="temps">
+        <div class="temp">
+          <div class="name">Hotend</div>
+          <div class="val"><span id="hotend-temp">--.-</span>&deg; <span class="target">&rarr; <span id="hotend-target">--.-</span>&deg;</span></div>
+        </div>
+        <div class="temp">
+          <div class="name">Bed</div>
+          <div class="val"><span id="bed-temp">--.-</span>&deg; <span class="target">&rarr; <span id="bed-target">--.-</span>&deg;</span></div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div class="card">
-    <h2>Jog</h2>
-    <div class="jog-layout">
-      <div class="jog-grid">
-        <span></span><button data-dx="0" data-dy="1">&#8593;</button><span></span>
-        <button data-dx="-1" data-dy="0">&#8592;</button><span></span><button data-dx="1" data-dy="0">&#8594;</button>
-        <span></span><button data-dx="0" data-dy="-1">&#8595;</button><span></span>
-      </div>
-      <div class="jog-z">
-        <button data-dz="1">Z&#8593;</button>
-        <button data-dz="-1">Z&#8595;</button>
+    <div class="card">
+      <h2>Print control</h2>
+      <div class="btn-row">
+        <button class="primary" id="btn-start">Start</button>
+        <button id="btn-pause">Pause</button>
+        <button id="btn-resume">Resume</button>
+        <button class="danger" id="btn-stop">Stop</button>
+        <button id="btn-home">Home</button>
       </div>
     </div>
-    <div class="feedrate-row">
-      <label for="jog-step">Step</label>
-      <input type="range" id="jog-step" min="0.1" max="50" step="0.1" value="10">
-      <span class="val" id="jog-step-val">10.0 mm</span>
+
+    <div class="card">
+      <h2>Tune</h2>
+      <div class="tune-row">
+        <label for="tune-speed">Speed</label>
+        <input type="number" id="tune-speed" min="10" max="300" step="1" value="100">
+        <span class="tune-unit">%</span>
+        <button id="btn-tune-speed">Set</button>
+      </div>
+      <div class="tune-row">
+        <label for="tune-flow">Flow</label>
+        <input type="number" id="tune-flow" min="10" max="300" step="1" value="100">
+        <span class="tune-unit">%</span>
+        <button id="btn-tune-flow">Set</button>
+      </div>
+      <div class="tune-row">
+        <label for="tune-zoffset">Z offset</label>
+        <input type="number" id="tune-zoffset" min="-2" max="2" step="0.01" value="0">
+        <span class="tune-unit">mm</span>
+        <button id="btn-tune-zoffset">Set</button>
+      </div>
     </div>
-  </div>
+
+    <div class="card">
+      <h2>Camera</h2>
+      <div class="camera-box" id="camera-box">
+        <span id="camera-placeholder">no camera configured</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Jog</h2>
+      <div class="jog-layout">
+        <div class="jog-grid">
+          <span></span><button data-dx="0" data-dy="1">&#8593;</button><span></span>
+          <button data-dx="-1" data-dy="0">&#8592;</button><span></span><button data-dx="1" data-dy="0">&#8594;</button>
+          <span></span><button data-dx="0" data-dy="-1">&#8595;</button><span></span>
+        </div>
+        <div class="jog-z">
+          <button data-dz="1">Z&#8593;</button>
+          <button data-dz="-1">Z&#8595;</button>
+        </div>
+      </div>
+      <div class="feedrate-row">
+        <label for="jog-step">Step</label>
+        <input type="range" id="jog-step" min="0.1" max="50" step="0.1" value="10">
+        <span class="val" id="jog-step-val">10.0 mm</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Macros</h2>
+      <div class="btn-row">
+        <button id="btn-filament-load">Load filament</button>
+        <button id="btn-filament-unload">Unload filament</button>
+        <button id="btn-preheat-pla">Preheat PLA</button>
+        <button id="btn-preheat-petg">Preheat PETG</button>
+        <button id="btn-cooldown">Cooldown</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="files">
+    <div class="card">
+      <h2>Files</h2>
+      <div class="file-gallery" id="file-list">
+        <div class="file-list-empty" id="file-list-empty">no files found</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="console">
+    <div class="card">
+      <h2>Console</h2>
+      <div class="console-log" id="console-log"></div>
+      <div class="console-input-row">
+        <input type="text" id="console-input" placeholder="G-code, e.g. G28"
+               autocomplete="off" spellcheck="false">
+        <button class="primary" id="btn-console-send">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="settings">
+    <div class="card">
+      <h2>Camera</h2>
+      <div class="field-row">
+        <label for="camera-mode">Source</label>
+        <select id="camera-mode">
+          <option value="none">None</option>
+          <option value="url">Network camera (URL)</option>
+          <option value="local">Local (P4/USB, not available yet)</option>
+        </select>
+      </div>
+      <div class="field-row" id="camera-url-row">
+        <label for="camera-url">Stream URL</label>
+        <input type="text" id="camera-url" placeholder="http://192.168.1.50/stream">
+      </div>
+      <div class="btn-row" style="margin-top: 10px;">
+        <button class="primary" id="btn-camera-save">Save</button>
+        <span class="settings-status" id="camera-settings-status"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Settings</h2>
+      <textarea id="settings-text" spellcheck="false"
+                placeholder="printer.cfg-style config text"></textarea>
+      <div class="btn-row" style="margin-top: 10px;">
+        <button class="primary" id="btn-settings-save">Save</button>
+        <span class="settings-status" id="settings-status"></span>
+      </div>
+    </div>
+  </section>
 
   <footer>ws://<span id="ws-host"></span>/ws</footer>
 </div>
@@ -319,10 +608,28 @@
   var hotendTargetEl = document.getElementById("hotend-target");
   var bedTempEl = document.getElementById("bed-temp");
   var bedTargetEl = document.getElementById("bed-target");
+  var printFilenameEl = document.getElementById("print-filename");
+  var printLayerEl = document.getElementById("print-layer");
+  var printRemainingEl = document.getElementById("print-remaining");
+  var tuneSpeedInput = document.getElementById("tune-speed");
+  var tuneFlowInput = document.getElementById("tune-flow");
+  var tuneZOffsetInput = document.getElementById("tune-zoffset");
   var jogStepInput = document.getElementById("jog-step");
   var jogStepVal = document.getElementById("jog-step-val");
 
   document.getElementById("ws-host").textContent = location.host;
+
+  document.querySelectorAll("#tabbar button").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      var page = tab.getAttribute("data-page");
+      document.querySelectorAll("#tabbar button").forEach(function (t) {
+        t.classList.toggle("active", t === tab);
+      });
+      document.querySelectorAll(".page").forEach(function (p) {
+        p.classList.toggle("active", p.getAttribute("data-page") === page);
+      });
+    });
+  });
 
   function fmtElapsed(totalSeconds) {
     var s = Math.max(0, totalSeconds | 0);
@@ -344,6 +651,19 @@
     hotendTargetEl.textContent = msg.hotend_target.toFixed(1);
     bedTempEl.textContent = msg.bed_temp.toFixed(1);
     bedTargetEl.textContent = msg.bed_target.toFixed(1);
+
+    printFilenameEl.textContent = msg.filename || "—";
+    printLayerEl.textContent = (msg.layer_total > 0)
+      ? "layer " + msg.layer_current + "/" + msg.layer_total : "";
+    printRemainingEl.textContent = (msg.remaining_s > 0)
+      ? fmtElapsed(msg.remaining_s) + " left" : "";
+
+    // Only overwrite the Tune inputs when they're not focused, so typing
+    // a new value doesn't get clobbered by the next status push before
+    // "Set" is clicked.
+    if (document.activeElement !== tuneSpeedInput) tuneSpeedInput.value = msg.speed_factor;
+    if (document.activeElement !== tuneFlowInput) tuneFlowInput.value = msg.flow_factor;
+    if (document.activeElement !== tuneZOffsetInput) tuneZOffsetInput.value = msg.z_offset;
   }
 
   var socket = null;
@@ -366,7 +686,9 @@
     socket.onmessage = function (ev) {
       var msg;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (msg && msg.type === "status") applyStatus(msg);
+      if (!msg) return;
+      if (msg.type === "status") applyStatus(msg);
+      else if (msg.type === "console_log") appendConsoleLine(msg.line, false);
     };
   }
 
@@ -405,6 +727,182 @@
     });
   });
 
+  // Mirrors touch-ui's screen_macros.c: fixed 50mm/300mm-per-min filament
+  // moves, and PLA/PETG/cooldown as two temp-set commands back to back --
+  // same shape, kept in sync by design intent (see web_api.h's top comment).
+  var FILAMENT_MOVE_MM = 50.0;
+  var FILAMENT_FEEDRATE_MM_MIN = 300.0;
+
+  function sendFilamentMove(command) {
+    send({ type: "command", command: command, jog_dz: FILAMENT_MOVE_MM
+         , jog_feedrate: FILAMENT_FEEDRATE_MM_MIN });
+  }
+  function sendPreheat(hotendC, bedC) {
+    send({ type: "command", command: "set_hotend_temp", target_temp: hotendC });
+    send({ type: "command", command: "set_bed_temp", target_temp: bedC });
+  }
+
+  document.getElementById("btn-filament-load").addEventListener("click", function () { sendFilamentMove("filament_load"); });
+  document.getElementById("btn-filament-unload").addEventListener("click", function () { sendFilamentMove("filament_unload"); });
+  document.getElementById("btn-preheat-pla").addEventListener("click", function () { sendPreheat(200, 60); });
+  document.getElementById("btn-preheat-petg").addEventListener("click", function () { sendPreheat(230, 80); });
+  document.getElementById("btn-cooldown").addEventListener("click", function () { sendPreheat(0, 0); });
+
+  // -- Tune (speed/flow factor %, Z offset mm) --
+  document.getElementById("btn-tune-speed").addEventListener("click", function () {
+    send({ type: "command", command: "set_speed_factor", value: parseFloat(tuneSpeedInput.value) });
+  });
+  document.getElementById("btn-tune-flow").addEventListener("click", function () {
+    send({ type: "command", command: "set_flow_factor", value: parseFloat(tuneFlowInput.value) });
+  });
+  document.getElementById("btn-tune-zoffset").addEventListener("click", function () {
+    send({ type: "command", command: "set_z_offset", value: parseFloat(tuneZOffsetInput.value) });
+  });
+
+  // -- Console (manual G-code + response log) --
+  var consoleLogEl = document.getElementById("console-log");
+  var consoleInputEl = document.getElementById("console-input");
+
+  function appendConsoleLine(text, sent) {
+    var line = document.createElement("div");
+    if (sent) line.className = "sent";
+    line.textContent = (sent ? "» " : "") + text;
+    consoleLogEl.appendChild(line);
+    consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+  }
+
+  function sendConsoleLine() {
+    var line = consoleInputEl.value.trim();
+    if (!line) return;
+    send({ type: "command", command: "gcode", gcode: line });
+    appendConsoleLine(line, true);
+    consoleInputEl.value = "";
+  }
+
+  document.getElementById("btn-console-send").addEventListener("click", sendConsoleLine);
+  consoleInputEl.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") sendConsoleLine();
+  });
+
+  // -- Camera (GET /api/camera, see web_api.h's top comment for shape) --
+  function loadCamera() {
+    fetch("/api/camera").then(function (r) { return r.json(); }).then(function (cfg) {
+      var box = document.getElementById("camera-box");
+      if (cfg.mode === "url" || cfg.mode === "local") {
+        var src = cfg.mode === "url" ? cfg.url : "/camera/stream";
+        box.innerHTML = "";
+        var img = document.createElement("img");
+        img.src = src;
+        img.alt = "camera stream";
+        box.appendChild(img);
+      } else {
+        box.innerHTML = '<span id="camera-placeholder">no camera configured</span>';
+      }
+    }).catch(function () { /* no server to ask -- leave the placeholder up */ });
+  }
+
+  // -- Camera settings (GET/POST /api/camera, structured form on the
+  // Settings page -- a friendlier alternative to hand-typing a [camera]
+  // section into the raw settings text below, see web_api.h) --
+  var cameraModeSelect = document.getElementById("camera-mode");
+  var cameraUrlRow = document.getElementById("camera-url-row");
+  var cameraUrlInput = document.getElementById("camera-url");
+  var cameraSettingsStatusEl = document.getElementById("camera-settings-status");
+
+  function updateCameraUrlRowVisibility() {
+    cameraUrlRow.classList.toggle("hidden", cameraModeSelect.value !== "url");
+  }
+
+  function loadCameraSettings() {
+    fetch("/api/camera").then(function (r) { return r.json(); }).then(function (cfg) {
+      cameraModeSelect.value = cfg.mode || "none";
+      cameraUrlInput.value = cfg.url || "";
+      updateCameraUrlRowVisibility();
+    }).catch(function () { /* no server to ask -- leave the defaults up */ });
+  }
+
+  cameraModeSelect.addEventListener("change", updateCameraUrlRowVisibility);
+
+  document.getElementById("btn-camera-save").addEventListener("click", function () {
+    var body = { mode: cameraModeSelect.value };
+    if (body.mode === "url") body.url = cameraUrlInput.value;
+    cameraSettingsStatusEl.className = "settings-status";
+    cameraSettingsStatusEl.textContent = "saving…";
+    fetch("/api/camera", { method: "POST", body: JSON.stringify(body) }).then(function (r) {
+      cameraSettingsStatusEl.className = "settings-status " + (r.ok ? "ok" : "error");
+      cameraSettingsStatusEl.textContent = r.ok ? "saved" : "save failed";
+      if (r.ok) loadCamera(); // refresh the Status page's live view too
+    }).catch(function () {
+      cameraSettingsStatusEl.className = "settings-status error";
+      cameraSettingsStatusEl.textContent = "save failed (no connection)";
+    });
+  });
+
+  // -- Files (GET /api/files, see web_api.h's top comment for shape) --
+  function fmtBytes(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + " MB";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + " KB";
+    return n + " B";
+  }
+
+  function loadFiles() {
+    fetch("/api/files").then(function (r) { return r.json(); }).then(function (data) {
+      var list = document.getElementById("file-list");
+      var files = data.files || [];
+      if (files.length === 0) {
+        list.innerHTML = '<div class="file-list-empty" id="file-list-empty">no files found</div>';
+        return;
+      }
+      list.innerHTML = "";
+      files.forEach(function (f) {
+        var tile = document.createElement("div");
+        tile.className = "file-tile";
+        var icon = document.createElement("div");
+        icon.className = "icon";
+        icon.textContent = "⬚"; // dotted square, stand-in for a thumbnail
+        var name = document.createElement("div");
+        name.className = "name";
+        name.textContent = f.name;
+        var meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = fmtBytes(f.size_bytes)
+          + (f.print_time_s ? " · " + fmtElapsed(f.print_time_s) : "");
+        tile.appendChild(icon);
+        tile.appendChild(name);
+        tile.appendChild(meta);
+        tile.addEventListener("click", function () {
+          send({ type: "command", command: "start", filename: f.name });
+        });
+        list.appendChild(tile);
+      });
+    }).catch(function () { /* no server to ask -- leave the empty-state up */ });
+  }
+
+  // -- Settings (GET/POST /api/settings, raw printer.cfg-style text) --
+  function loadSettings() {
+    fetch("/api/settings").then(function (r) { return r.text(); }).then(function (text) {
+      document.getElementById("settings-text").value = text;
+    }).catch(function () { /* no server to ask -- leave the textarea blank */ });
+  }
+
+  var settingsStatusEl = document.getElementById("settings-status");
+  document.getElementById("btn-settings-save").addEventListener("click", function () {
+    var text = document.getElementById("settings-text").value;
+    settingsStatusEl.className = "settings-status";
+    settingsStatusEl.textContent = "saving…";
+    fetch("/api/settings", { method: "POST", body: text }).then(function (r) {
+      settingsStatusEl.className = "settings-status " + (r.ok ? "ok" : "error");
+      settingsStatusEl.textContent = r.ok ? "saved" : "save failed";
+    }).catch(function () {
+      settingsStatusEl.className = "settings-status error";
+      settingsStatusEl.textContent = "save failed (no connection)";
+    });
+  });
+
+  loadCamera();
+  loadCameraSettings();
+  loadFiles();
+  loadSettings();
   connect();
 })();
 </script>
