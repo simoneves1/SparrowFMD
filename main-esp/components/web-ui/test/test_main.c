@@ -243,6 +243,62 @@ test_file_list_to_json_empty(void)
 }
 
 static void
+test_print_history_to_json(void)
+{
+    struct web_print_history_entry entries[2] = {
+        { .filename = "benchy.gcode", .duration_s = 8100, .success = true },
+        { .filename = "bracket_v3.gcode", .duration_s = 340, .success = false },
+    };
+    char *json = web_print_history_to_json(entries, 2);
+    CHECK("print history encodes", json != NULL);
+    if (!json)
+        return;
+    CHECK("print history JSON contains both entries with success flags"
+         , strstr(json, "\"filename\":\"benchy.gcode\"") != NULL
+           && strstr(json, "\"success\":true") != NULL
+           && strstr(json, "\"filename\":\"bracket_v3.gcode\"") != NULL
+           && strstr(json, "\"success\":false") != NULL);
+    web_json_free(json);
+}
+
+static void
+test_print_history_to_json_empty(void)
+{
+    char *json = web_print_history_to_json(NULL, 0);
+    CHECK("an empty print history still encodes to a valid (empty) array"
+         , json != NULL && strstr(json, "\"prints\":[]") != NULL);
+    web_json_free(json);
+}
+
+static void
+test_link_status_list_to_json(void)
+{
+    struct web_link_status links[2] = {
+        { .name = "touch-ui", .ok = true },
+        { .name = "toolboard", .ok = false },
+    };
+    char *json = web_link_status_list_to_json(links, 2);
+    CHECK("link status list encodes", json != NULL);
+    if (!json)
+        return;
+    CHECK("link status list JSON contains both links with ok flags"
+         , strstr(json, "\"name\":\"touch-ui\"") != NULL
+           && strstr(json, "\"ok\":true") != NULL
+           && strstr(json, "\"name\":\"toolboard\"") != NULL
+           && strstr(json, "\"ok\":false") != NULL);
+    web_json_free(json);
+}
+
+static void
+test_link_status_list_to_json_empty(void)
+{
+    char *json = web_link_status_list_to_json(NULL, 0);
+    CHECK("an empty link status list still encodes to a valid (empty) array"
+         , json != NULL && strstr(json, "\"links\":[]") != NULL);
+    web_json_free(json);
+}
+
+static void
 test_camera_config_to_json(void)
 {
     struct web_camera_config url_cfg = {.mode = WEB_CAMERA_URL};
@@ -390,6 +446,46 @@ test_control_command_temp_set_rejects_missing_target(void)
 }
 
 static void
+test_command_ack_roundtrip_ok(void)
+{
+    struct web_command_ack a = {.command = WEB_CMD_JOG, .ok = true};
+    char *json = web_command_ack_to_json(&a);
+    CHECK("ok command_ack encodes", json != NULL);
+    if (!json)
+        return;
+
+    CHECK("web_msg_type_of identifies a command_ack message"
+         , web_msg_type_of(json, strlen(json)) == WEB_MSG_COMMAND_ACK);
+
+    struct web_command_ack out;
+    bool ok = web_command_ack_from_json(json, strlen(json), &out);
+    CHECK("ok command_ack decodes and roundtrips"
+         , ok && out.command == WEB_CMD_JOG && out.ok == true
+           && strcmp(out.message, "") == 0);
+    web_json_free(json);
+}
+
+static void
+test_command_ack_roundtrip_error(void)
+{
+    struct web_command_ack a = {.command = WEB_CMD_UNKNOWN, .ok = false};
+    strncpy(a.message, "malformed command", sizeof(a.message) - 1);
+    char *json = web_command_ack_to_json(&a);
+    CHECK("error command_ack (unknown command) encodes", json != NULL);
+    if (!json)
+        return;
+    CHECK("error command_ack JSON reports command as \"unknown\""
+         , strstr(json, "\"command\":\"unknown\"") != NULL);
+
+    struct web_command_ack out;
+    bool ok = web_command_ack_from_json(json, strlen(json), &out);
+    CHECK("error command_ack decodes with WEB_CMD_UNKNOWN and its message"
+         , ok && out.command == WEB_CMD_UNKNOWN && out.ok == false
+           && strcmp(out.message, "malformed command") == 0);
+    web_json_free(json);
+}
+
+static void
 test_msg_type_of_edge_cases(void)
 {
     CHECK("web_msg_type_of on malformed JSON is UNKNOWN"
@@ -454,6 +550,10 @@ main(void)
     test_control_command_start_without_filename();
     test_file_list_to_json();
     test_file_list_to_json_empty();
+    test_print_history_to_json();
+    test_print_history_to_json_empty();
+    test_link_status_list_to_json();
+    test_link_status_list_to_json_empty();
     test_camera_config_to_json();
     test_camera_config_roundtrip();
     test_camera_config_rejects_url_mode_without_url();
@@ -462,6 +562,8 @@ main(void)
     test_control_command_gcode_rejects_empty_line();
     test_control_command_tune_roundtrip();
     test_console_log_roundtrip();
+    test_command_ack_roundtrip_ok();
+    test_command_ack_roundtrip_error();
     test_msg_type_of_edge_cases();
     test_decode_rejects_wrong_type();
     test_decode_rejects_unrecognized_enum_value();

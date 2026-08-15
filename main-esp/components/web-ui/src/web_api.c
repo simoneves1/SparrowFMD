@@ -57,6 +57,16 @@ cmd_is_tune_value(enum web_control_cmd cmd)
         || cmd == WEB_CMD_SET_Z_OFFSET;
 }
 
+// command_ack needs to encode WEB_CMD_UNKNOWN too (for "couldn't even
+// tell which command was meant"), which COMMAND_NAMES has no entry for
+// -- indexing it directly would read out of bounds.
+static const char *
+command_name_or_unknown(enum web_control_cmd cmd)
+{
+    return ((size_t)cmd < COMMAND_COUNT && COMMAND_NAMES[cmd])
+        ? COMMAND_NAMES[cmd] : "unknown";
+}
+
 static bool
 name_to_index(const char *name, const char *const *table, size_t count
              , int *out)
@@ -86,6 +96,8 @@ web_msg_type_of(const char *json, size_t len)
             result = WEB_MSG_COMMAND;
         else if (strcmp(type->valuestring, "console_log") == 0)
             result = WEB_MSG_CONSOLE_LOG;
+        else if (strcmp(type->valuestring, "command_ack") == 0)
+            result = WEB_MSG_COMMAND_ACK;
     }
     cJSON_Delete(root);
     return result;
@@ -332,6 +344,56 @@ web_console_log_from_json(const char *json, size_t len
 }
 
 char *
+web_command_ack_to_json(const struct web_command_ack *a)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (!root)
+        return NULL;
+
+    bool ok = cJSON_AddStringToObject(root, "type", "command_ack") != NULL
+        && cJSON_AddStringToObject(root, "command"
+                                   , command_name_or_unknown(a->command)) != NULL
+        && cJSON_AddBoolToObject(root, "ok", a->ok) != NULL
+        && cJSON_AddStringToObject(root, "message", a->message) != NULL;
+
+    char *out = ok ? cJSON_PrintUnformatted(root) : NULL;
+    cJSON_Delete(root);
+    return out;
+}
+
+bool
+web_command_ack_from_json(const char *json, size_t len
+                          , struct web_command_ack *out)
+{
+    cJSON *root = cJSON_ParseWithLength(json, len);
+    if (!root)
+        return false;
+
+    bool result = false;
+    cJSON *type = cJSON_GetObjectItemCaseSensitive(root, "type");
+    cJSON *command = cJSON_GetObjectItemCaseSensitive(root, "command");
+    cJSON *ok = cJSON_GetObjectItemCaseSensitive(root, "ok");
+    cJSON *message = cJSON_GetObjectItemCaseSensitive(root, "message");
+
+    int cmd_idx;
+    if (cJSON_IsString(type) && strcmp(type->valuestring, "command_ack") == 0
+        && cJSON_IsString(command) && cJSON_IsBool(ok)
+        && cJSON_IsString(message)) {
+        out->command = name_to_index(command->valuestring, COMMAND_NAMES
+                                     , COMMAND_COUNT, &cmd_idx)
+            ? (enum web_control_cmd)cmd_idx : WEB_CMD_UNKNOWN;
+        out->ok = cJSON_IsTrue(ok);
+        strncpy(out->message, message->valuestring
+               , WEB_COMMAND_ACK_MESSAGE_LEN - 1);
+        out->message[WEB_COMMAND_ACK_MESSAGE_LEN - 1] = '\0';
+        result = true;
+    }
+
+    cJSON_Delete(root);
+    return result;
+}
+
+char *
 web_file_list_to_json(const struct web_file_entry *files, size_t count)
 {
     cJSON *root = cJSON_CreateObject();
@@ -348,6 +410,61 @@ web_file_list_to_json(const struct web_file_entry *files, size_t count)
                                        , files[i].size_bytes) != NULL
             && cJSON_AddNumberToObject(entry, "print_time_s"
                                        , files[i].print_time_s) != NULL;
+        if (ok)
+            cJSON_AddItemToArray(arr, entry);
+        else if (entry)
+            cJSON_Delete(entry);
+    }
+
+    char *out = ok ? cJSON_PrintUnformatted(root) : NULL;
+    cJSON_Delete(root);
+    return out;
+}
+
+char *
+web_print_history_to_json(const struct web_print_history_entry *entries
+                          , size_t count)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (!root)
+        return NULL;
+
+    cJSON *arr = cJSON_AddArrayToObject(root, "prints");
+    bool ok = arr != NULL;
+    for (size_t i = 0; ok && i < count; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        ok = entry != NULL
+            && cJSON_AddStringToObject(entry, "filename"
+                                       , entries[i].filename) != NULL
+            && cJSON_AddNumberToObject(entry, "duration_s"
+                                       , entries[i].duration_s) != NULL
+            && cJSON_AddBoolToObject(entry, "success"
+                                     , entries[i].success) != NULL;
+        if (ok)
+            cJSON_AddItemToArray(arr, entry);
+        else if (entry)
+            cJSON_Delete(entry);
+    }
+
+    char *out = ok ? cJSON_PrintUnformatted(root) : NULL;
+    cJSON_Delete(root);
+    return out;
+}
+
+char *
+web_link_status_list_to_json(const struct web_link_status *links, size_t count)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (!root)
+        return NULL;
+
+    cJSON *arr = cJSON_AddArrayToObject(root, "links");
+    bool ok = arr != NULL;
+    for (size_t i = 0; ok && i < count; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        ok = entry != NULL
+            && cJSON_AddStringToObject(entry, "name", links[i].name) != NULL
+            && cJSON_AddBoolToObject(entry, "ok", links[i].ok) != NULL;
         if (ok)
             cJSON_AddItemToArray(arr, entry);
         else if (entry)

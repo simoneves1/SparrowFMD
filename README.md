@@ -127,6 +127,20 @@ server (not ESP-IDF, a throwaway Node script) driving the real page in a
 real browser -- confirms the frontend/JSON contract works together, but
 is not a substitute for a real device test, which hasn't happened yet.
 
+Since then: every "command" message now gets a `command_ack` reply
+(reached-the-server confirmation, not "the printer did it" -- there's
+still no gcode/kinematics pipeline to report that) surfaced as toast
+notifications in the frontend; `GET /api/history` and `GET /api/diagnostics`
+round out the HTTP endpoints (print history and `safety`'s
+`link_watchdog` link status, both backed by real logic in `main.c` --
+history records a real "stopped early" entry off a real received "stop",
+diagnostics reports a real link_watchdog that genuinely transitions
+OK -> FAULTED ~10s after boot since no real UART receive loop feeds it
+yet, not a fabricated demo value); Tune moved off the Status page onto
+Settings so it can't be bumped by accident; and the Stop button now asks
+for confirmation before sending, the one control on this page with a
+real, hard-to-undo consequence.
+
 `touch-ui` now has a real ESP-IDF project (retargeted from an initial
 esp32s3 guess to plain esp32, matching the first real hardware picked --
 see touch-ui/README.md and touch-ui/PINOUT.md) that builds clean and

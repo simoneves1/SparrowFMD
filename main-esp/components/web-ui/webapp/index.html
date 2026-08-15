@@ -206,6 +206,11 @@
     color: var(--text-dim);
     margin: 0 0 12px;
   }
+  .card-note {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: -6px 0 12px;
+  }
 
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
   button {
@@ -337,6 +342,73 @@
   }
   .camera-box img { width: 100%; height: 100%; object-fit: contain; }
 
+  .diag-list { display: flex; flex-direction: column; gap: 6px; }
+  .diag-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .diag-row .dot-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .diag-row .dot-status .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--bad);
+  }
+  .diag-row .dot-status.up .dot { background: var(--ok); }
+
+  .history-list { display: flex; flex-direction: column; gap: 6px; }
+  .history-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border-radius: 8px;
+  }
+  .history-row .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-row .meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .history-row .badge {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bad) 18%, var(--surface));
+    color: var(--bad);
+  }
+  .history-row .badge.success {
+    background: color-mix(in srgb, var(--ok) 18%, var(--surface));
+    color: var(--ok);
+  }
+
   .file-gallery {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -415,6 +487,36 @@
   .settings-status.ok { color: var(--ok); }
   .settings-status.error { color: var(--bad); }
 
+  .toast-stack {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-size: 13px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { border-color: var(--bad); color: var(--bad); }
+  .toast.ok { color: var(--text-dim); font-size: 12px; padding: 6px 14px; }
+
   footer {
     text-align: center;
     font-size: 11px;
@@ -475,28 +577,6 @@
     </div>
 
     <div class="card">
-      <h2>Tune</h2>
-      <div class="tune-row">
-        <label for="tune-speed">Speed</label>
-        <input type="number" id="tune-speed" min="10" max="300" step="1" value="100">
-        <span class="tune-unit">%</span>
-        <button id="btn-tune-speed">Set</button>
-      </div>
-      <div class="tune-row">
-        <label for="tune-flow">Flow</label>
-        <input type="number" id="tune-flow" min="10" max="300" step="1" value="100">
-        <span class="tune-unit">%</span>
-        <button id="btn-tune-flow">Set</button>
-      </div>
-      <div class="tune-row">
-        <label for="tune-zoffset">Z offset</label>
-        <input type="number" id="tune-zoffset" min="-2" max="2" step="0.01" value="0">
-        <span class="tune-unit">mm</span>
-        <button id="btn-tune-zoffset">Set</button>
-      </div>
-    </div>
-
-    <div class="card">
       <h2>Camera</h2>
       <div class="camera-box" id="camera-box">
         <span id="camera-placeholder">no camera configured</span>
@@ -542,6 +622,13 @@
         <div class="file-list-empty" id="file-list-empty">no files found</div>
       </div>
     </div>
+
+    <div class="card">
+      <h2>History</h2>
+      <div class="history-list" id="history-list">
+        <div class="file-list-empty" id="history-list-empty">no print history yet</div>
+      </div>
+    </div>
   </section>
 
   <section class="page" data-page="console">
@@ -557,6 +644,37 @@
   </section>
 
   <section class="page" data-page="settings">
+    <div class="card">
+      <h2>Diagnostics</h2>
+      <div class="diag-list" id="diag-list">
+        <div class="file-list-empty" id="diag-list-empty">loading&hellip;</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Tune</h2>
+      <p class="card-note">Moved off the Status page so it can't be
+      bumped by accident while checking on a print.</p>
+      <div class="tune-row">
+        <label for="tune-speed">Speed</label>
+        <input type="number" id="tune-speed" min="10" max="300" step="1" value="100">
+        <span class="tune-unit">%</span>
+        <button id="btn-tune-speed">Set</button>
+      </div>
+      <div class="tune-row">
+        <label for="tune-flow">Flow</label>
+        <input type="number" id="tune-flow" min="10" max="300" step="1" value="100">
+        <span class="tune-unit">%</span>
+        <button id="btn-tune-flow">Set</button>
+      </div>
+      <div class="tune-row">
+        <label for="tune-zoffset">Z offset</label>
+        <input type="number" id="tune-zoffset" min="-2" max="2" step="0.01" value="0">
+        <span class="tune-unit">mm</span>
+        <button id="btn-tune-zoffset">Set</button>
+      </div>
+    </div>
+
     <div class="card">
       <h2>Camera</h2>
       <div class="field-row">
@@ -589,6 +707,7 @@
   </section>
 
   <footer>ws://<span id="ws-host"></span>/ws</footer>
+  <div class="toast-stack" id="toast-stack"></div>
 </div>
 
 <script>
@@ -618,6 +737,24 @@
   var jogStepVal = document.getElementById("jog-step-val");
 
   document.getElementById("ws-host").textContent = location.host;
+
+  // -- Toast notifications (command_ack feedback -- see web_api.h's top
+  // comment: "ok" only means the server understood the command, not that
+  // the printer did whatever it asked for; there's no pipeline yet to
+  // report the latter) --
+  var toastStackEl = document.getElementById("toast-stack");
+
+  function showToast(message, kind, durationMs) {
+    var el = document.createElement("div");
+    el.className = "toast" + (kind ? " " + kind : "");
+    el.textContent = message;
+    toastStackEl.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add("show"); });
+    setTimeout(function () {
+      el.classList.remove("show");
+      setTimeout(function () { el.remove(); }, 200);
+    }, durationMs);
+  }
 
   document.querySelectorAll("#tabbar button").forEach(function (tab) {
     tab.addEventListener("click", function () {
@@ -689,12 +826,24 @@
       if (!msg) return;
       if (msg.type === "status") applyStatus(msg);
       else if (msg.type === "console_log") appendConsoleLine(msg.line, false);
+      else if (msg.type === "command_ack") {
+        if (msg.ok) {
+          showToast(msg.command + " sent", "ok", 1200);
+          if (msg.command === "stop") loadHistory(); // a stop may have just recorded an entry
+        } else {
+          showToast((msg.message || "command failed") + " (" + msg.command + ")", "error", 3500);
+        }
+      }
     };
   }
 
   function send(obj) {
-    if (socket && socket.readyState === WebSocket.OPEN)
+    if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(obj));
+    } else {
+      showToast("not connected — " + (obj.command || "command") + " not sent"
+               , "error", 3000);
+    }
   }
 
   function sendCommand(command) { send({ type: "command", command: command }); }
@@ -702,7 +851,15 @@
   document.getElementById("btn-start").addEventListener("click", function () { sendCommand("start"); });
   document.getElementById("btn-pause").addEventListener("click", function () { sendCommand("pause"); });
   document.getElementById("btn-resume").addEventListener("click", function () { sendCommand("resume"); });
-  document.getElementById("btn-stop").addEventListener("click", function () { sendCommand("stop"); });
+  document.getElementById("btn-stop").addEventListener("click", function () {
+    // The one button on this page with a real, hard-to-undo consequence
+    // now that "stop" actually ends print tracking and records history
+    // (see main-esp/main/main.c) -- a plain native confirm() rather than
+    // a themed modal, matching this page's own "no build step, no
+    // framework" choice: reliable and instant over polished.
+    if (confirm("Stop the current print? This cannot be undone."))
+      sendCommand("stop");
+  });
   document.getElementById("btn-home").addEventListener("click", function () { sendCommand("home"); });
 
   jogStepInput.addEventListener("input", function () {
@@ -878,6 +1035,71 @@
     }).catch(function () { /* no server to ask -- leave the empty-state up */ });
   }
 
+  // -- Print history (GET /api/history, see web_api.h's top comment for
+  // shape). Note what "success" can honestly mean right now -- see
+  // main-esp/main/main.c: there's no real print-completion pipeline yet,
+  // so every recorded entry today is a "stopped early" (success:false)
+  // in response to a real "stop" command; nothing can produce
+  // success:true yet. --
+  function loadHistory() {
+    fetch("/api/history").then(function (r) { return r.json(); }).then(function (data) {
+      var list = document.getElementById("history-list");
+      var prints = data.prints || [];
+      if (prints.length === 0) {
+        list.innerHTML = '<div class="file-list-empty" id="history-list-empty">no print history yet</div>';
+        return;
+      }
+      list.innerHTML = "";
+      prints.forEach(function (p) {
+        var row = document.createElement("div");
+        row.className = "history-row";
+        var name = document.createElement("span");
+        name.className = "name";
+        name.textContent = p.filename;
+        var meta = document.createElement("span");
+        meta.className = "meta";
+        var badge = document.createElement("span");
+        badge.className = "badge" + (p.success ? " success" : "");
+        badge.textContent = p.success ? "done" : "stopped";
+        meta.appendChild(document.createTextNode(fmtElapsed(p.duration_s)));
+        meta.appendChild(badge);
+        row.appendChild(name);
+        row.appendChild(meta);
+        list.appendChild(row);
+      });
+    }).catch(function () { /* no server to ask -- leave the empty-state up */ });
+  }
+
+  // -- Diagnostics (GET /api/diagnostics, see web_api.h's top comment for
+  // shape). Polled every 5s rather than fetched once -- the point of a
+  // link_watchdog-backed status is that it can change over time (e.g.
+  // main-esp's real touch-ui link_watchdog transitioning from "ok" to
+  // "faulted" ~10s after boot, since nothing has fed it yet -- see
+  // main-esp/main/main.c), so a one-shot load would go stale immediately. --
+  function loadDiagnostics() {
+    fetch("/api/diagnostics").then(function (r) { return r.json(); }).then(function (data) {
+      var list = document.getElementById("diag-list");
+      var links = data.links || [];
+      if (links.length === 0) {
+        list.innerHTML = '<div class="file-list-empty" id="diag-list-empty">no links configured</div>';
+        return;
+      }
+      list.innerHTML = "";
+      links.forEach(function (l) {
+        var row = document.createElement("div");
+        row.className = "diag-row";
+        var name = document.createElement("span");
+        name.textContent = l.name;
+        var status = document.createElement("span");
+        status.className = "dot-status" + (l.ok ? " up" : "");
+        status.innerHTML = '<span class="dot"></span>' + (l.ok ? "ok" : "faulted");
+        row.appendChild(name);
+        row.appendChild(status);
+        list.appendChild(row);
+      });
+    }).catch(function () { /* no server to ask -- leave the loading state up */ });
+  }
+
   // -- Settings (GET/POST /api/settings, raw printer.cfg-style text) --
   function loadSettings() {
     fetch("/api/settings").then(function (r) { return r.text(); }).then(function (text) {
@@ -902,7 +1124,10 @@
   loadCamera();
   loadCameraSettings();
   loadFiles();
+  loadHistory();
   loadSettings();
+  loadDiagnostics();
+  setInterval(loadDiagnostics, 5000);
   connect();
 })();
 </script>

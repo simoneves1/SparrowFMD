@@ -173,6 +173,39 @@ static char s_settings_text[WEB_SERVER_MAX_SETTINGS_BYTES] = "";
 // In-RAM only camera config -- lost on reboot, same caveat as settings.
 static struct web_camera_config s_camera_config = {.mode = WEB_CAMERA_NONE};
 
+// In-RAM only print history ring buffer -- lost on reboot, same caveat
+// as settings/camera config. There's no real gcode/kinematics pipeline
+// to report an actual print *completing*, so "success" here can only
+// honestly mean one thing right now: a print that was still running (a
+// filename was being tracked) when a "stop" command arrived is recorded
+// as success=false ("stopped early"). Nothing today can record
+// success=true -- that needs a real print-completion event, which
+// doesn't exist yet. This is a real, non-fabricated signal (an actual
+// received "stop"), just a narrow one -- not a substitute for real print
+// tracking once gcode/kinematics exists.
+#define HISTORY_CAPACITY 20
+static struct web_print_history_entry s_history[HISTORY_CAPACITY];
+static size_t s_history_count; // number of valid entries, <= HISTORY_CAPACITY
+
+static char s_tracking_filename[WEB_FILENAME_LEN] = "";
+static int64_t s_tracking_start_us;
+
+static void
+record_print_history(const char *filename, uint32_t duration_s, bool success)
+{
+    // Ring buffer, newest at index 0 -- matches GET /api/history's
+    // documented most-recent-first order.
+    size_t n = s_history_count < HISTORY_CAPACITY
+        ? s_history_count + 1 : HISTORY_CAPACITY;
+    for (size_t i = n - 1; i > 0; i--)
+        s_history[i] = s_history[i - 1];
+    strncpy(s_history[0].filename, filename, WEB_FILENAME_LEN - 1);
+    s_history[0].filename[WEB_FILENAME_LEN - 1] = '\0';
+    s_history[0].duration_s = duration_s;
+    s_history[0].success = success;
+    s_history_count = n;
+}
+
 static void
 on_web_command(const struct web_control_command *cmd, void *ctx)
 {
@@ -187,6 +220,50 @@ on_web_command(const struct web_control_command *cmd, void *ctx)
             , cmd->command, cmd->gcode, cmd->filename, cmd->value
             , cmd->target_temp, cmd->jog_dx, cmd->jog_dy, cmd->jog_dz
             , cmd->jog_feedrate);
+
+    if (cmd->command == WEB_CMD_START && cmd->filename[0] != '\0') {
+        strncpy(s_tracking_filename, cmd->filename, WEB_FILENAME_LEN - 1);
+        s_tracking_filename[WEB_FILENAME_LEN - 1] = '\0';
+        s_tracking_start_us = esp_timer_get_time();
+    } else if (cmd->command == WEB_CMD_STOP && s_tracking_filename[0] != '\0') {
+        uint32_t duration_s = (uint32_t)
+            ((esp_timer_get_time() - s_tracking_start_us) / 1000000);
+        record_print_history(s_tracking_filename, duration_s, false);
+        s_tracking_filename[0] = '\0';
+    }
+}
+
+static size_t
+on_web_history_list(struct web_print_history_entry *out, size_t max, void *ctx)
+{
+    (void)ctx;
+    size_t n = s_history_count < max ? s_history_count : max;
+    memcpy(out, s_history, n * sizeof(out[0]));
+    return n;
+}
+
+// Real safety-module link_watchdog, not a demo stand-in -- but there is
+// genuinely no real UART receive loop wired up yet (touch-ui's link is
+// still unwired, see touch-ui/PINOUT.md's open UART pin question), so
+// nothing ever calls link_watchdog_feed() on it. Its status will
+// honestly show "ok" for TOUCHUI_LINK_TIMEOUT_MS after boot (the window
+// link_watchdog_reset() below starts), then genuinely transition to
+// FAULTED -- correct behavior for the real current state of the world
+// ("no link has ever been established"), not a fabricated demo value.
+#define TOUCHUI_LINK_TIMEOUT_MS 10000
+static struct link_watchdog s_touchui_link;
+
+static size_t
+on_web_diagnostics(struct web_link_status *out, size_t max, void *ctx)
+{
+    (void)ctx;
+    if (max < 1)
+        return 0;
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    strncpy(out[0].name, "touch-ui", sizeof(out[0].name) - 1);
+    out[0].name[sizeof(out[0].name) - 1] = '\0';
+    out[0].ok = link_watchdog_check(&s_touchui_link, now_ms) == LINK_OK;
+    return 1;
 }
 
 static size_t
@@ -274,9 +351,15 @@ start_web_server(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    link_watchdog_init(&s_touchui_link, TOUCHUI_LINK_TIMEOUT_MS, NULL, NULL);
+    link_watchdog_reset(&s_touchui_link
+                        , (uint32_t)(esp_timer_get_time() / 1000));
+
     struct web_server_config cfg = {
         .port = 80, .on_command = on_web_command
         , .on_files_list = on_web_files_list
+        , .on_history_list = on_web_history_list
+        , .on_diagnostics = on_web_diagnostics
         , .on_camera_config = on_web_camera_config
         , .on_camera_config_set = on_web_camera_config_set
         , .on_settings_get = on_web_settings_get

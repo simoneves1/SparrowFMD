@@ -41,9 +41,19 @@
 //   field, same "same shape, don't duplicate fields" reasoning as
 //   jog_dz/jog_feedrate and target_temp above)
 //
-// One more message flows server -> browser over "/ws" alongside "status",
-// for the Console page's response log:
+// Two more messages flow server -> browser over "/ws" alongside "status":
 //   {"type":"console_log","line":"ok"}
+//   (the Console page's response log)
+//   {"type":"command_ack","command":"jog","ok":true,"message":""}
+//   (sent once for every "command" message received, immediately --
+//   confirms the message reached the server and was understood well
+//   enough to dispatch, NOT that whatever it asked for actually
+//   happened. "ok":false + a non-empty "message" means it was malformed
+//   or unrecognized and was dropped rather than dispatched -- see
+//   web_server.h. There is currently no real gcode/kinematics execution
+//   pipeline to report success/failure of the underlying action itself;
+//   this is deliberately scoped to "did the server understand you",
+//   not "did the printer do it".)
 //
 // Two more JSON shapes exist outside the WebSocket "type" dispatch above,
 // since they're plain request/response data rather than push/command
@@ -51,6 +61,15 @@
 // not "/ws":
 //   GET /api/files  -> {"files":[{"name":"benchy.gcode","size_bytes":
 //                       6291456,"print_time_s":8100}, ...]}
+//   GET /api/history -> {"prints":[{"filename":"benchy.gcode",
+//                        "duration_s":8100,"success":true}, ...]}
+//   (most-recent-first is expected but not enforced by this header --
+//   see web_server.h for how an entry gets recorded in the first place)
+//   GET /api/diagnostics -> {"links":[{"name":"touch-ui","ok":true}, ...]}
+//   (one entry per monitored link -- see safety's link_watchdog and
+//   web_server.h for how "ok" gets decided; "ok" here means "heard from
+//   recently enough to trust", not that anything about the link is
+//   configured or working end-to-end)
 //   GET/POST /api/camera -> {"mode":"url","url":"http://192.168.1.50/stream"}
 //                            | {"mode":"local"} | {"mode":"none"}
 //   (POST body is the same shape; url is required and non-empty for
@@ -71,6 +90,7 @@ enum web_msg_type {
     WEB_MSG_STATUS,
     WEB_MSG_COMMAND,
     WEB_MSG_CONSOLE_LOG,
+    WEB_MSG_COMMAND_ACK,
     WEB_MSG_UNKNOWN, // not valid JSON, or missing/unrecognized "type"
 };
 
@@ -163,6 +183,23 @@ char *web_control_command_to_json(const struct web_control_command *c);
 bool web_control_command_from_json(const char *json, size_t len
                                    , struct web_control_command *out);
 
+// Pushed server -> browser over "/ws" once per received "command"
+// message -- see this header's top comment for the JSON shape and what
+// "ok" does and doesn't mean. "command" is WEB_CMD_UNKNOWN when the
+// message was too malformed to even identify which command was meant
+// (e.g. missing/unrecognized "command" field entirely).
+#define WEB_COMMAND_ACK_MESSAGE_LEN 64
+
+struct web_command_ack {
+    enum web_control_cmd command;
+    bool ok;
+    char message[WEB_COMMAND_ACK_MESSAGE_LEN]; // "" when ok
+};
+
+char *web_command_ack_to_json(const struct web_command_ack *a);
+bool web_command_ack_from_json(const char *json, size_t len
+                               , struct web_command_ack *out);
+
 // Pushed server -> browser over "/ws" for the Console page, one line at
 // a time (e.g. gcode-parser's response to a "gcode" command, or an
 // unsolicited status line) -- see this header's top comment for the
@@ -185,6 +222,25 @@ struct web_file_entry {
 };
 
 char *web_file_list_to_json(const struct web_file_entry *files, size_t count);
+
+// -- /api/history -- see this header's top comment for the JSON shape.
+struct web_print_history_entry {
+    char filename[WEB_FILENAME_LEN];
+    uint32_t duration_s;
+    bool success; // false = stopped/errored before completion
+};
+
+char *web_print_history_to_json(const struct web_print_history_entry *entries
+                                , size_t count);
+
+// -- /api/diagnostics -- see this header's top comment for the JSON shape.
+struct web_link_status {
+    char name[32];
+    bool ok;
+};
+
+char *web_link_status_list_to_json(const struct web_link_status *links
+                                   , size_t count);
 
 // -- /api/camera -- see this header's top comment for the JSON shape.
 enum web_camera_mode {

@@ -29,6 +29,8 @@
 //     only owns the HTTP surface).
 //   GET /api/files -- backed by on_files_list below, same "not wired to
 //     real storage yet" caveat.
+//   GET /api/history -- backed by on_history_list below, same caveat.
+//   GET /api/diagnostics -- backed by on_diagnostics below.
 //   GET/POST /api/camera -- backed by on_camera_config/on_camera_config_set
 //     below, same "not wired to real storage yet" caveat. When GET
 //     reports {"mode":"local"}, the browser is expected to point an
@@ -55,6 +57,24 @@ typedef void (*web_command_cb)(const struct web_control_command *cmd
 // job), it just needs somewhere to ask.
 typedef size_t (*web_files_list_cb)(struct web_file_entry *out, size_t max
                                     , void *ctx);
+
+// Fills out[] with up to max past-print entries, most-recent-first,
+// returns how many were written. May be NULL, in which case
+// GET /api/history reports an empty list. See web_api.h's top comment
+// for the JSON shape and main-esp/main/main.c for how an entry actually
+// gets recorded in the first place (there's no real print-completion
+// pipeline yet -- see that file's own comments on what "success" can
+// honestly mean today).
+typedef size_t (*web_history_list_cb)(struct web_print_history_entry *out
+                                      , size_t max, void *ctx);
+
+// Fills out[] with up to max monitored-link statuses, returns how many
+// were written. May be NULL, in which case GET /api/diagnostics reports
+// an empty list. Each entry is expected to come from a real safety
+// component link_watchdog's link_watchdog_check() result -- see
+// main-esp/main/main.c for how "ok" is actually decided today.
+typedef size_t (*web_diagnostics_cb)(struct web_link_status *out, size_t max
+                                     , void *ctx);
 
 // Fills *out with the current camera configuration. May be NULL, in
 // which case GET /api/camera always reports {"mode":"none"}.
@@ -85,6 +105,8 @@ struct web_server_config {
     uint16_t port;
     web_command_cb on_command; // may be NULL to ignore inbound commands
     web_files_list_cb on_files_list;
+    web_history_list_cb on_history_list;
+    web_diagnostics_cb on_diagnostics;
     web_camera_config_cb on_camera_config;
     web_camera_config_set_cb on_camera_config_set;
     web_settings_get_cb on_settings_get;
@@ -97,6 +119,14 @@ struct web_server_config {
 // limit (a real SD card's file count is expected to comfortably fit;
 // revisit if that stops being true).
 #define WEB_SERVER_MAX_FILES 64
+
+// Same fixed-stack-buffer reasoning as WEB_SERVER_MAX_FILES, for
+// GET /api/history.
+#define WEB_SERVER_MAX_HISTORY 32
+
+// Same fixed-stack-buffer reasoning as WEB_SERVER_MAX_FILES, for
+// GET /api/diagnostics.
+#define WEB_SERVER_MAX_LINKS 8
 
 // Raw config text size cap for GET/POST /api/settings, for the same
 // fixed-buffer-on-the-stack reason as WEB_SERVER_MAX_FILES.

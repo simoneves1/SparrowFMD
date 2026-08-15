@@ -63,13 +63,40 @@ ws_handler(httpd_req_t *req)
     if (frame.type == HTTPD_WS_TYPE_TEXT
         && web_msg_type_of((const char *)buf, frame.len) == WEB_MSG_COMMAND) {
         struct web_control_command cmd;
+        struct web_command_ack ack = {0};
         if (web_control_command_from_json((const char *)buf, frame.len, &cmd)) {
             struct web_server_config *hctx =
                 (struct web_server_config *)req->user_ctx;
             if (hctx && hctx->on_command)
                 hctx->on_command(&cmd, hctx->cb_ctx);
+            // "ok" here means "reached the server and was dispatched",
+            // not "the printer did it" -- see web_api.h's top comment.
+            // on_command has no return value to report real success/
+            // failure with yet, since no real gcode/kinematics execution
+            // pipeline exists to report it from.
+            ack.command = cmd.command;
+            ack.ok = true;
         } else {
             ESP_LOGW(TAG, "dropped a malformed/incomplete command message");
+            ack.command = WEB_CMD_UNKNOWN;
+            ack.ok = false;
+            strncpy(ack.message, "malformed or unrecognized command"
+                   , sizeof(ack.message) - 1);
+        }
+
+        char *ack_json = web_command_ack_to_json(&ack);
+        if (ack_json) {
+            httpd_ws_frame_t ack_frame = {0};
+            ack_frame.type = HTTPD_WS_TYPE_TEXT;
+            ack_frame.payload = (uint8_t *)ack_json;
+            ack_frame.len = strlen(ack_json);
+            // Synchronous send back on this same request/connection --
+            // unlike web_server_broadcast_status's async fan-out to every
+            // client, this reply is only meaningful to whoever sent the
+            // command that triggered it.
+            if (httpd_ws_send_frame(req, &ack_frame) != ESP_OK)
+                ESP_LOGW(TAG, "failed to send command_ack");
+            web_json_free(ack_json);
         }
     }
 
@@ -99,6 +126,26 @@ files_handler(httpd_req_t *req)
     size_t count = (cfg && cfg->on_files_list)
         ? cfg->on_files_list(entries, WEB_SERVER_MAX_FILES, cfg->cb_ctx) : 0;
     return send_json_or_500(req, web_file_list_to_json(entries, count));
+}
+
+static esp_err_t
+history_handler(httpd_req_t *req)
+{
+    struct web_server_config *cfg = (struct web_server_config *)req->user_ctx;
+    struct web_print_history_entry entries[WEB_SERVER_MAX_HISTORY];
+    size_t count = (cfg && cfg->on_history_list)
+        ? cfg->on_history_list(entries, WEB_SERVER_MAX_HISTORY, cfg->cb_ctx) : 0;
+    return send_json_or_500(req, web_print_history_to_json(entries, count));
+}
+
+static esp_err_t
+diagnostics_handler(httpd_req_t *req)
+{
+    struct web_server_config *cfg = (struct web_server_config *)req->user_ctx;
+    struct web_link_status links[WEB_SERVER_MAX_LINKS];
+    size_t count = (cfg && cfg->on_diagnostics)
+        ? cfg->on_diagnostics(links, WEB_SERVER_MAX_LINKS, cfg->cb_ctx) : 0;
+    return send_json_or_500(req, web_link_status_list_to_json(links, count));
 }
 
 static esp_err_t
@@ -201,10 +248,10 @@ web_server_start(const struct web_server_config *cfg)
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = cfg->port;
-    // Default (8) is exactly what this server now registers (ws, index,
-    // files, camera GET+POST, camera/stream, settings GET+POST = 8) with
-    // no headroom -- explicit and padded rather than relying on the
-    // default happening to still be enough as this grows.
+    // Default (8) is two short of what this server now registers (ws,
+    // index, files, history, diagnostics, camera GET+POST, camera/stream,
+    // settings GET+POST = 10) -- explicit and padded rather than relying
+    // on the default happening to still be enough as this grows.
     config.max_uri_handlers = 12;
 
     httpd_handle_t server = NULL;
@@ -221,6 +268,10 @@ web_server_start(const struct web_server_config *cfg)
         {.uri = "/", .method = HTTP_GET, .handler = index_handler},
         {.uri = "/api/files", .method = HTTP_GET, .handler = files_handler
          , .user_ctx = &s_ctx},
+        {.uri = "/api/history", .method = HTTP_GET, .handler = history_handler
+         , .user_ctx = &s_ctx},
+        {.uri = "/api/diagnostics", .method = HTTP_GET
+         , .handler = diagnostics_handler, .user_ctx = &s_ctx},
         {.uri = "/api/camera", .method = HTTP_GET, .handler = camera_handler
          , .user_ctx = &s_ctx},
         {.uri = "/api/camera", .method = HTTP_POST
