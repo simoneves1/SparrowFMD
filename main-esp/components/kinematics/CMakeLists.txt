@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+        "src/trapq.c"
+        "src/itersolve.c"
+        "src/kin_cartesian.c"
+        "src/kinematics_steps.c"
+    INCLUDE_DIRS
+        "include"
+)

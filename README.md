@@ -203,11 +203,19 @@ not the P4 hardware-FPU behavior this whole prototype exists to test, so it
 wouldn't be a trustworthy answer. Static disassembly-based cycle estimation
 was considered as a fallback but also deferred -- real P4 hardware, once
 available, gives a real measurement instead of an estimate either way.
-Unlike the first (negative) prototype's spike directory, this one's code
-(`main-esp/benchmarks/chelper-p4-float32-v2/`) is being kept in the tree
-rather than deleted, since the adaptive-epsilon fix is a real result worth
-not re-deriving from scratch when hardware arrives -- see that directory's
-own RESULTS.md for the full writeup.
+Unlike the first (negative) prototype, this one's code has since been
+promoted out of the benchmark spike into a real, permanent
+`main-esp/components/kinematics` module (Cartesian only, matching this
+project's stated scope) -- host-tested (the same bed-size/print-duration
+sweeps that validated the adaptive-epsilon fix, now as real PASS/FAIL
+checks, see that component's own `test/test_main.c`) and cross-compiles
+clean for both esp32p4 and esp32s3 as part of `main-esp`'s normal build.
+Not yet wired to anything: there's no `gcode-parser` -> `kinematics` ->
+step-transmission pipeline yet, and the speed question above is still
+open pending real P4 hardware -- this only means the trajectory-planning
+piece of that future pipeline is real, tested code now instead of a
+throwaway spike. See that component's own README.md for the full
+provenance/scope writeup.
 
 Only one board is actually planned (P4), but see main-esp/README.md's
 "Designed to not lock into one chip" note: nothing in the application
@@ -221,10 +229,16 @@ require rewriting application logic.
 - [x] Prototype a float32 port of chelper's hot path — first attempt hit
       a correctness blocker, second attempt (adaptive epsilon) resolved
       it, see Status
-- [ ] Resolve the kinematics question above — now purely a speed
-      question: get real P4 timing data for the float32 port (deliberately
-      waiting for real hardware rather than an emulated/estimated number,
-      see Status — the available QEMU can't exercise the P4's hardware FPU)
+- [x] Promote the float32 kinematics port from a benchmark spike into a
+      real `main-esp/components/kinematics` module — Cartesian only,
+      host-tested, cross-compiles for esp32p4/esp32s3, see Status
+- [ ] Resolve the kinematics speed question above — get real P4 timing
+      data for the float32 port (deliberately waiting for real hardware
+      rather than an emulated/estimated number, see Status — the
+      available QEMU can't exercise the P4's hardware FPU)
+- [ ] Wire `gcode-parser` -> `kinematics` -> a real step-transmission
+      path (`kinematics_steps.h`'s callback -> `klipper-host-protocol`
+      message encoding) — no such pipeline exists yet
 - [x] Pick the specific P4 board/module for development — Guition
       JC-ESP32P4-M3-DEV; UART-link and CAN pin assignments done, see
       `main-esp/PINOUT.md`. SD/Ethernet exact pin numbers and the
@@ -243,7 +257,9 @@ require rewriting application logic.
       rest of `klipper-host-protocol` against real hardware once
       available
 - [x] `main-esp`: `gcode-parser` module
-- [ ] `main-esp`: `kinematics` module (blocked on the open question above)
+- [x] `main-esp`: `kinematics` module — Cartesian trajectory planning,
+      host-tested, cross-compiles for esp32p4/esp32s3; not yet wired to
+      `gcode-parser` or a real step-transmission path, see Status
 - [x] `main-esp`: `safety` module — link watchdog/heartbeat to
       mainboard/toolhead (not thermal safety, which lives on the MCU side)
 - [x] `main-esp`: `storage` module — cfg_parser tested; SD mount
