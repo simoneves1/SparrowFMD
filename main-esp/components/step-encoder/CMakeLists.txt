@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+        "src/step_encoder.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        klipper-host-protocol
+        motion-planner
+)

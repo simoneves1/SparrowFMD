@@ -20,6 +20,8 @@
 #include "web_api.h"
 #include "motion_planner.h"
 #include "web_server.h"
+#include "khp_msgtable.h"
+#include "step_encoder.h"
 
 static const char *TAG = "main-esp";
 
@@ -107,6 +109,59 @@ self_test_motion_planner(void)
         && s_motion_planner_self_test_step_count > 0;
 
     motion_planner_destroy(mp);
+    return ok;
+}
+
+// Mock dictionary, same pattern as klipper-host-protocol's own unit
+// tests: msgids here are arbitrary (a real board's are assigned per
+// build via its identify dictionary), but the format strings are
+// Klipper's real, documented queue_step/set_next_step_dir convention.
+// See step-encoder/README.md for why this self-test uses a mock table
+// rather than a real one -- no real MCU board exists yet.
+static const char STEP_ENCODER_MOCK_DICT_JSON[] =
+    "{"
+    "\"version\":\"mock-1\","
+    "\"build_versions\":\"gcc-12\","
+    "\"commands\":{"
+        "\"queue_step oid=%c interval=%u count=%hu add=%hi\":10,"
+        "\"set_next_step_dir oid=%c dir=%c\":11"
+    "},"
+    "\"responses\":{},"
+    "\"output\":{}"
+    "}";
+
+// Second real exercise of the full chain, one step further than
+// self_test_motion_planner(): gcode -> kinematics -> motion-planner ->
+// real Klipper wire-format message bytes (against a mock dictionary,
+// see above). Confirms the chain links together on the real target;
+// says nothing about a real MCU accepting these bytes, which needs real
+// hardware (see HARDWARE_TESTING.md).
+static bool
+self_test_step_encoder(void)
+{
+    struct khp_msgtable table;
+    if (!khp_msgtable_parse(&table, STEP_ENCODER_MOCK_DICT_JSON
+                            , sizeof(STEP_ENCODER_MOCK_DICT_JSON) - 1))
+        return false;
+
+    struct step_encoder_config enc_cfg = {
+        .oid_x = 1, .oid_y = 2, .oid_z = 3
+        , .mcu_freq_hz = 16000000.0
+        , .table = &table,
+    };
+    struct step_encoder *enc = step_encoder_create(&enc_cfg);
+    if (!enc) {
+        khp_msgtable_free(&table);
+        return false;
+    }
+
+    struct motion_planner_step_event ev = { .axis = 'x', .dir = 1, .time = 0.001 };
+    struct step_encoder_message msgs[2];
+    int n = step_encoder_encode_step(enc, &ev, msgs);
+    bool ok = n == 2 && msgs[0].content_len > 0 && msgs[1].content_len > 0;
+
+    step_encoder_destroy(enc);
+    khp_msgtable_free(&table);
     return ok;
 }
 
@@ -436,6 +491,10 @@ app_main(void)
 
     ok = self_test_motion_planner();
     ESP_LOGI(TAG, "motion-planner (gcode->kinematics chain) self-test: %s"
+            , ok ? "PASS" : "FAIL");
+
+    ok = self_test_step_encoder();
+    ESP_LOGI(TAG, "step-encoder (mock dictionary) self-test: %s"
             , ok ? "PASS" : "FAIL");
 
     ok = self_test_shared_protocol();

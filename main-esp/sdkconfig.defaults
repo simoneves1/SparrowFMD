@@ -1,0 +1,3 @@
+# web-ui's web_server.c uses esp_http_server's WebSocket support
+# (httpd_ws_send_frame etc.), which is off by default.
+CONFIG_HTTPD_WS_SUPPORT=y

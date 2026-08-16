@@ -8,6 +8,7 @@ idf_component_register(
         gcode-parser
         kinematics
         motion-planner
+        step-encoder
         shared-protocol
         safety
         storage

@@ -68,16 +68,24 @@ but that's all that's been confirmed.
 - [ ] `khp_usb_cdc_transport` -- no real USB device has ever been
       enumerated against it. Needs a real board connected over USB and,
       critically, a real identify handshake: the actual `queue_step`
-      message format/tag isn't something this repo can hardcode ahead of
+      message id/format isn't something this repo can hardcode ahead of
       time, Klipper's wire protocol is dictionary-driven (the MCU's
-      compiled dictionary defines its own message formats), so this is
-      also the point where `motion-planner`'s step events could
-      realistically start getting encoded into real
-      `klipper-host-protocol` messages for the first time -- that
-      pipeline doesn't exist yet either, see root README's Roadmap.
+      compiled dictionary defines its own message formats).
 - [ ] Confirm the identify/dictionary-decompression path
       (`khp_dictionary`, `khp_msgtable`) against a real MCU's actual
       compiled dictionary, not just synthetic test data.
+- [ ] Point `step-encoder` at a real MCU's actual dictionary instead of
+      its current mock one, and confirm the real board accepts and
+      executes the resulting `queue_step`/`set_next_step_dir` messages.
+      `motion-planner`'s step events -> `klipper-host-protocol` message
+      bytes pipeline itself already exists and is host-tested (22
+      checks, mock dictionary using Klipper's real format strings) --
+      see `main-esp/components/step-encoder/README.md` -- this item is
+      specifically about swapping the mock dictionary for a real one and
+      real per-axis `oid`/MCU clock frequency values, plus whatever the
+      real board reveals that the mock didn't catch (e.g. real
+      `queue_step` throughput without run-length compression, which
+      `step-encoder` doesn't implement yet).
 
 ## Once main-esp *and* touch-ui can both be powered and wired together
 - [ ] The touch-ui <-> main-esp UART link itself. Blocked on a pin

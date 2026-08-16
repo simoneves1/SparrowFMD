@@ -79,9 +79,21 @@ real bug was caught during development this way: an early version's
 flush-time margin (copied from `kinematics`' own single-move test
 harness) silently dropped steps for any queued move shorter than that
 margin -- see that component's own README.md for the full story and how
-the regression test catches it. Not yet done: feeding step events into
-`klipper-host-protocol`'s message encoding to actually reach a real MCU
-board, and any real lookahead/cornering-speed smoothing.
+the regression test catches it.
+
+`step-encoder` (new) closes the next gap: turns `motion-planner`'s step
+events into real Klipper wire-format `queue_step`/`set_next_step_dir`
+message bytes, via `klipper-host-protocol`'s `khp_msg_encode` against a
+`khp_msgtable`. Host-tested (22 checks) against a mock dictionary using
+Klipper's real, documented format strings, and wired into
+`main-esp/main.c`'s boot self-test the same way. Deliberately minimal --
+one `queue_step` per step event (`count=1 add=0`), not the run-length
+compression real Klipper's `stepcompress.c` does; `oid`/MCU clock
+frequency are caller-supplied, not derived from a real dictionary, since
+no real MCU board's identify handshake exists yet to supply them. Not
+yet done: running against a real MCU's actual dictionary (needs real
+hardware, see `HARDWARE_TESTING.md`), run-length compression, and any
+real lookahead/cornering-speed smoothing in `motion-planner`.
 
 `shared-protocol` (in `shared/shared-protocol/`) is also done and
 unit-tested: the UART message schema between main-esp and touch-ui/
@@ -257,9 +269,13 @@ require rewriting application logic.
 - [x] Wire `gcode-parser` -> `kinematics` — new `motion-planner` module,
       G0/G1 only, no lookahead queue, host-tested (12 checks) and wired
       into main.c's boot self-test, see Status
-- [ ] Wire `motion-planner`'s step events -> a real step-transmission
-      path (`kinematics_steps.h`'s callback -> `klipper-host-protocol`
-      message encoding) — no such pipeline exists yet
+- [x] Wire `motion-planner`'s step events -> a real step-transmission
+      path — new `step-encoder` module (`kinematics_steps.h`'s callback
+      -> `klipper-host-protocol` message encoding), host-tested (22
+      checks) against a mock dictionary and wired into main.c's boot
+      self-test, see Status. No run-length step compression yet
+      (`count=1 add=0` per step), and not run against a real MCU's
+      actual dictionary — needs real hardware, see `HARDWARE_TESTING.md`
 - [x] Pick the specific P4 board/module for development — Guition
       JC-ESP32P4-M3-DEV; UART-link and CAN pin assignments done, see
       `main-esp/PINOUT.md`. SD/Ethernet exact pin numbers and the
