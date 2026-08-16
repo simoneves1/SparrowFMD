@@ -274,7 +274,7 @@ require rewriting application logic.
       `esp_lcd_panel_swap_xy`+`mirror` in `display-driver` now corrects
       it, confirmed against two real photos (portrait, then again after
       the landscape pivot below). Touch coordinate accuracy from a real
-      finger press still unverified
+      finger press now verified too (see below)
 - [x] `touch-ui`: `ui` component — redesigned from an initial portrait
       3-screen guess to landscape 480x320 with a 4-tab nav (Status, Jog,
       Files, Macros) matching the "SparrowFDM Operator UI mockup" design
@@ -289,10 +289,16 @@ require rewriting application logic.
       screens were built eagerly -- bumped to 96KB. Boot log now
       confirms all 4 tab screens build and the canned demo status
       renders, no crash
-- [ ] Interactive verification on the physical panel: actual touch
-      coordinate accuracy from a finger press, and nav between the 4 tab
-      screens (+ Files' print-confirm subpage) via real taps (boot log
-      only confirms the initial Status screen renders, not interaction)
+- [x] Interactive verification on the physical panel: tapping did
+      nothing at first -- the XPT2046 touch controller has its own
+      independent swap_xy/mirror config (separate from the display
+      panel's), and beyond that, being a *resistive* controller, its raw
+      ADC range needed a real per-device linear calibration (a first
+      2-point diagonal attempt couldn't detect an axis swap that turned
+      out to be genuinely present on this unit; redone with 3
+      non-colinear points). Applied via `esp_lcd_touch_config_t`'s
+      `process_coordinates` hook. Tab navigation and button hits now
+      land where tapped on real hardware.
 - [ ] `touch-ui`: real UART client against `main-esp`'s `uart-links`
       module — needs a second UART peripheral pin choice, see
       touch-ui/PINOUT.md's open question, and main-esp's own board (P4)
