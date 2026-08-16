@@ -22,6 +22,7 @@
 #include "web_server.h"
 #include "khp_msgtable.h"
 #include "step_encoder.h"
+#include "storage_sd.h"
 
 static const char *TAG = "main-esp";
 
@@ -367,13 +368,34 @@ on_web_diagnostics(struct web_link_status *out, size_t max, void *ctx)
     return 1;
 }
 
+// Real SD mount point, real storage_sd_list_gcode_files() call below --
+// but storage_sd itself is still *unverified against real hardware* (see
+// storage_sd.h), so on real boards without an SD card wired yet, this
+// mount attempt is honestly expected to fail and s_sd_mounted stays
+// false, same as every other "cross-compiles, nothing more" caveat in
+// this file. GET /api/files then honestly reports empty rather than
+// faking demo entries -- no slicer metadata parsing exists yet either,
+// so print_time_s is always reported as 0/unknown.
+#define SD_MOUNT_POINT "/sdcard"
+static bool s_sd_mounted;
+
 static size_t
 on_web_files_list(struct web_file_entry *out, size_t max, void *ctx)
 {
-    (void)out; (void)max; (void)ctx;
-    // Honestly empty rather than faking demo entries -- no SD card
-    // listing exists yet (that's storage_sd's job), see web_server.h.
-    return 0;
+    (void)ctx;
+    if (!s_sd_mounted)
+        return 0;
+
+    struct storage_sd_file_entry sd_entries[WEB_SERVER_MAX_FILES];
+    size_t cap = max < WEB_SERVER_MAX_FILES ? max : WEB_SERVER_MAX_FILES;
+    size_t n = storage_sd_list_gcode_files(SD_MOUNT_POINT, sd_entries, cap);
+    for (size_t i = 0; i < n; i++) {
+        strncpy(out[i].name, sd_entries[i].name, WEB_FILENAME_LEN - 1);
+        out[i].name[WEB_FILENAME_LEN - 1] = '\0';
+        out[i].size_bytes = sd_entries[i].size_bytes;
+        out[i].print_time_s = 0; // no slicer metadata parsing yet
+    }
+    return n;
 }
 
 static void
@@ -456,6 +478,8 @@ start_web_server(void)
     link_watchdog_reset(&s_touchui_link
                         , (uint32_t)(esp_timer_get_time() / 1000));
 
+    s_sd_mounted = storage_sd_mount(SD_MOUNT_POINT);
+
     struct web_server_config cfg = {
         .port = 80, .on_command = on_web_command
         , .on_files_list = on_web_files_list
@@ -513,4 +537,7 @@ app_main(void)
     ESP_LOGI(TAG, "web-ui server start: %s (port 80 -- unreachable until a"
                   " network driver is wired up, see start_web_server()'s"
                   " comment)", ok ? "PASS" : "FAIL");
+    ESP_LOGI(TAG, "SD card mount at %s: %s (real hardware, expected to fail"
+                  " without a card wired -- see storage_sd.h)"
+            , SD_MOUNT_POINT, s_sd_mounted ? "PASS" : "FAIL");
 }

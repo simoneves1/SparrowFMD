@@ -1,10 +1,26 @@
-// Host-buildable unit tests for storage's cfg_parser.
+// Host-buildable unit tests for storage's cfg_parser and
+// storage_sd_list_gcode_files (storage_sd_mount/unmount are ESP-IDF-only
+// and deliberately excluded here, see storage_sd.h's own note).
 // Build with any C compiler, no ESP-IDF required:
-//   gcc -Wall -I../include -o cfg_test test_main.c ../src/cfg_parser.c
+//   gcc -Wall -I../include -o storage_test test_main.c
+//     ../src/cfg_parser.c ../src/storage_sd_list.c
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 #include "cfg_parser.h"
+#include "storage_sd.h"
+
+// mkdir()'s signature differs between platforms -- confined to this test
+// file's own fixture setup, storage_sd_list.c itself never creates
+// directories.
+#ifdef _WIN32
+#include <direct.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#else
+#include <sys/stat.h>
+#define TEST_MKDIR(path) mkdir(path, 0755)
+#endif
 
 static int g_failures = 0;
 
@@ -204,6 +220,81 @@ test_whitespace_trimmed(void)
          , sec && strcmp(cfg_get(sec, "key"), "value with spaces") == 0);
 }
 
+#define FIXTURE_DIR "storage_sd_list_test_fixture"
+
+static void
+write_fixture_file(const char *name, const char *contents)
+{
+    char path[256];
+    snprintf(path, sizeof(path), FIXTURE_DIR "/%s", name);
+    FILE *f = fopen(path, "wb");
+    if (!f) {
+        printf("FAIL: could not create fixture file %s\n", path);
+        g_failures++;
+        return;
+    }
+    fwrite(contents, 1, strlen(contents), f);
+    fclose(f);
+}
+
+static bool
+find_entry(const struct storage_sd_file_entry *entries, size_t count
+          , const char *name)
+{
+    for (size_t i = 0; i < count; i++)
+        if (strcmp(entries[i].name, name) == 0)
+            return true;
+    return false;
+}
+
+static void
+test_storage_sd_list_gcode_files(void)
+{
+    TEST_MKDIR(FIXTURE_DIR);
+    TEST_MKDIR(FIXTURE_DIR "/subdir"); // must be skipped, not a regular file
+
+    write_fixture_file("benchy.gcode", "; a gcode file\nG28\n");
+    write_fixture_file("CALIBRATION.G", "G28\n"); // uppercase extension
+    write_fixture_file("notes.txt", "not a gcode file");
+    write_fixture_file("no_extension", "also not a gcode file");
+
+    struct storage_sd_file_entry entries[16];
+    size_t n = storage_sd_list_gcode_files(FIXTURE_DIR, entries, 16);
+
+    CHECK("lists exactly the 2 gcode files, ignoring non-gcode and subdirs"
+         , n == 2);
+    CHECK("finds the lowercase .gcode file", find_entry(entries, n, "benchy.gcode"));
+    CHECK("finds the file with an uppercase .G extension"
+         , find_entry(entries, n, "CALIBRATION.G"));
+    CHECK("does not list the .txt file", !find_entry(entries, n, "notes.txt"));
+    CHECK("does not list the extensionless file"
+         , !find_entry(entries, n, "no_extension"));
+
+    for (size_t i = 0; i < n; i++) {
+        if (strcmp(entries[i].name, "benchy.gcode") == 0)
+            CHECK("benchy.gcode's reported size matches its real contents"
+                 , entries[i].size_bytes == strlen("; a gcode file\nG28\n"));
+    }
+}
+
+static void
+test_storage_sd_list_gcode_files_respects_max(void)
+{
+    struct storage_sd_file_entry entries[1];
+    size_t n = storage_sd_list_gcode_files(FIXTURE_DIR, entries, 1);
+    CHECK("a max of 1 never returns more than 1 entry even though 2 exist"
+         , n == 1);
+}
+
+static void
+test_storage_sd_list_gcode_files_missing_dir(void)
+{
+    struct storage_sd_file_entry entries[16];
+    size_t n = storage_sd_list_gcode_files("no_such_directory_at_all"
+                                           , entries, 16);
+    CHECK("a directory that can't be opened returns 0, not a crash", n == 0);
+}
+
 int
 main(void)
 {
@@ -219,6 +310,9 @@ main(void)
     test_line_too_long();
     test_crlf_tolerated();
     test_whitespace_trimmed();
+    test_storage_sd_list_gcode_files();
+    test_storage_sd_list_gcode_files_respects_max();
+    test_storage_sd_list_gcode_files_missing_dir();
 
     printf("\n%s (%d failure%s)\n"
           , g_failures ? "SOME TESTS FAILED" : "ALL TESTS PASSED"

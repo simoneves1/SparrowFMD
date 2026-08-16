@@ -126,7 +126,14 @@ printer.cfg, for familiarity -- but main-esp's own format, no
 compatibility requirement to match it byte-for-byte). Its `storage_sd`
 SD-card mount is a concrete ESP-IDF SDMMC+FATFS skeleton with the same
 **unverified against real hardware** caveat as `khp_uart_transport` --
-cross-compiles, nothing more.
+cross-compiles, nothing more. `storage_sd_list_gcode_files()` (new) is
+the exception: pure POSIX (`opendir`/`readdir`/`stat`), so it's
+host-tested (real checks against a real fixture directory, not a mock)
+independent of the mount code around it, and now wired into
+`main-esp/main.c`'s `GET /api/files` -- `main.c` attempts a real
+`storage_sd_mount("/sdcard")` on every boot and lists whatever's
+actually there, honestly reporting empty when (as on every board today)
+no SD card is wired up yet.
 
 `web-ui`'s JSON WebSocket/HTTP API (`web_api`) has grown well past the
 original status/control_command parity with shared-protocol, unit-tested
@@ -306,8 +313,10 @@ require rewriting application logic.
 - [x] `main-esp`: `safety` module — link watchdog/heartbeat to
       mainboard/toolhead (not thermal safety, which lives on the MCU side)
 - [x] `main-esp`: `storage` module — cfg_parser tested; SD mount
-      unverified against hardware — see Status
-- [ ] Validate `storage_sd` against real hardware once available
+      unverified against hardware; `storage_sd_list_gcode_files()` (new)
+      is host-tested and wired into `GET /api/files` — see Status
+- [ ] Validate `storage_sd_mount()` against real hardware once available
+      (the listing on top of it is already host-tested, see Status)
 - [x] `main-esp`: `web-ui` module — JSON WebSocket/HTTP API tested
       (status/control_command, files/camera/settings endpoints,
       Console/Tune commands); full tabbed frontend (Status/Files/Console/

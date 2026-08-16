@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "src/cfg_parser.c"
         "src/storage_sd.c"
+        "src/storage_sd_list.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

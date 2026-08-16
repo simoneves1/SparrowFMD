@@ -19,6 +19,8 @@
 #define STORAGE_SD_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 // Mounts the SD card at mount_point (e.g. "/sdcard"). Returns false (and
 // logs the ESP-IDF error) if the SDMMC peripheral or SD card init fails,
@@ -30,5 +32,29 @@ bool storage_sd_mount(const char *mount_point);
 // Unmounts and releases the card. Safe to call even if mount was never
 // called or already failed (a no-op in that case).
 void storage_sd_unmount(const char *mount_point);
+
+#define STORAGE_SD_MAX_FILENAME 64
+
+struct storage_sd_file_entry {
+    char name[STORAGE_SD_MAX_FILENAME]; // filename only, not full path
+    uint32_t size_bytes;
+};
+
+// Lists regular files directly under dir_path whose name ends in
+// ".gcode" or ".g" (case-insensitive), up to max entries, into out. Not
+// recursive -- matches a typical flat print-file folder, same scope
+// klipper's virtual_sdcard assumes by default. Returns the number of
+// entries written; 0 if dir_path can't be opened (e.g. the SD card
+// isn't mounted -- not distinguishable here from "mounted but empty",
+// callers that care should check storage_sd_mount()'s own return value
+// first) or genuinely has no matching files.
+//
+// Pure POSIX (opendir/readdir/stat) -- unlike storage_sd_mount/unmount
+// above, this is host-testable against a real directory without a real
+// SD card or ESP-IDF, since ESP-IDF's FATFS VFS exposes the same POSIX
+// calls once mounted.
+size_t storage_sd_list_gcode_files(const char *dir_path
+                                   , struct storage_sd_file_entry *out
+                                   , size_t max);
 
 #endif // storage_sd.h

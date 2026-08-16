@@ -19,11 +19,15 @@ see `touch-ui/main/main.c`'s `TOUCH_UI_RUN_TOUCH_CALIBRATION` flag and
 `run_touch_calibration()`'s comment.
 
 Still open on this board specifically:
-- [ ] `touch-ui`'s Files screen only shows static demo data (no real SD
-      listing exists on main-esp yet to ask for one) and Macros' "Bed
-      mesh" button is intentionally a no-op (no corresponding command
-      exists) -- both need main-esp-side work first, not more testing
-      here.
+- [ ] `touch-ui`'s Files screen still only shows static demo data.
+      `main-esp` now has a real SD listing to ask for
+      (`storage_sd_list_gcode_files`, wired into `GET /api/files`, see
+      root README) -- but touch-ui talks to main-esp over the UART link
+      in "Once main-esp *and* touch-ui can both be powered and wired
+      together" below, which doesn't exist yet either, so there's
+      nothing to ask it over yet. Revisit once that link exists.
+      Macros' "Bed mesh" button is intentionally a no-op (no
+      corresponding command exists) -- separate main-esp-side work.
 
 ## Once the P4 board is purchased (`main-esp`'s actual target)
 Nothing in `main-esp` has run on real hardware at all yet -- everything
@@ -46,7 +50,13 @@ but that's all that's been confirmed.
       epsilon; the speed question was deliberately left for real
       hardware rather than an estimate).
 - [ ] `storage_sd` (SD card mount, SDMMC+FATFS) -- needs a real SD card
-      and the card slot wired per `main-esp/PINOUT.md`
+      and the card slot wired per `main-esp/PINOUT.md`. `main.c` already
+      attempts `storage_sd_mount("/sdcard")` on every boot and feeds the
+      result into `GET /api/files` via `storage_sd_list_gcode_files()`
+      (host-tested, pure POSIX opendir/readdir/stat, see
+      `main-esp/components/storage/include/storage_sd.h`), so this item
+      is specifically about confirming the mount itself succeeds on real
+      hardware and the listing then shows real files placed on the card.
 - [ ] `khp_uart_transport` (klipper-host-protocol's UART transport) --
       needs the second UART peripheral pin choice finalized first, see
       "touch-ui <-> main-esp UART link" below (same open pin question)
