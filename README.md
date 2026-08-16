@@ -135,6 +135,22 @@ independent of the mount code around it, and now wired into
 actually there, honestly reporting empty when (as on every board today)
 no SD card is wired up yet.
 
+`main.c`'s "start" command (new) closes the loop those modules were all
+built toward: it now actually opens the named file off the SD card and
+feeds every line through the real `gcode-parser` -> `motion-planner` ->
+`step-encoder` chain (the same chain and the same mock dictionary
+`self_test_step_encoder()` exercises with one hardcoded line, just
+driven by a real file), then records the result in print history.
+"success" here means something real -- the whole file parsed and
+planned without error, and every resulting step encoded to real Klipper
+wire bytes -- but it is deliberately not the same thing as a real print
+finishing: nothing runs in real time yet (a whole file's motion is
+planned in one synchronous burst, not paced to match how long the real
+print would take), and there's still no real MCU or motor turning any
+of this into physical motion (see `HARDWARE_TESTING.md`). Everything
+else (jog, temp-set, filament, Tune, raw Console gcode lines) still has
+no execution backend -- logged, not acted on, same as before.
+
 `web-ui`'s JSON WebSocket/HTTP API (`web_api`) has grown well past the
 original status/control_command parity with shared-protocol, unit-tested
 throughout (40+ host-buildable test cases): status now carries
@@ -167,16 +183,18 @@ real browser -- confirms the frontend/JSON contract works together, but
 is not a substitute for a real device test, which hasn't happened yet.
 
 Since then: every "command" message now gets a `command_ack` reply
-(reached-the-server confirmation, not "the printer did it" -- there's
-still no gcode/kinematics pipeline to report that) surfaced as toast
-notifications in the frontend; `GET /api/history` and `GET /api/diagnostics`
-round out the HTTP endpoints (print history and `safety`'s
-`link_watchdog` link status, both backed by real logic in `main.c` --
-history records a real "stopped early" entry off a real received "stop",
-diagnostics reports a real link_watchdog that genuinely transitions
-OK -> FAULTED ~10s after boot since no real UART receive loop feeds it
-yet, not a fabricated demo value); Tune moved off the Status page onto
-Settings so it can't be bumped by accident; and the Stop button now asks
+(reached-the-server confirmation -- for most commands still not "the
+printer did it", since jog/temp-set/filament/Tune/Console-gcode have no
+execution backend yet, but "start" is the exception now, see below)
+surfaced as toast notifications in the frontend; `GET /api/history` and
+`GET /api/diagnostics` round out the HTTP endpoints (print history and
+`safety`'s `link_watchdog` link status, both backed by real logic in
+`main.c` -- history now records a real pipeline-completion result (see
+below), diagnostics reports a real link_watchdog that genuinely
+transitions OK -> FAULTED ~10s after boot since no real UART receive
+loop feeds it yet, not a fabricated demo value); Tune moved off the
+Status page onto Settings so it can't be bumped by accident; and the
+Stop button now asks
 for confirmation before sending, the one control on this page with a
 real, hard-to-undo consequence.
 
@@ -285,6 +303,12 @@ require rewriting application logic.
       self-test, see Status. No run-length step compression yet
       (`count=1 add=0` per step), and not run against a real MCU's
       actual dictionary — needs real hardware, see `HARDWARE_TESTING.md`
+- [x] Wire a real "start" command to actually run the full pipeline
+      (SD file -> gcode-parser -> motion-planner -> step-encoder) instead
+      of just logging the command — see Status. Runs synchronously, not
+      real-time-paced, and nothing beyond "start" has an execution
+      backend yet (jog/temp-set/filament/Tune/Console-gcode still just
+      log)
 - [x] Pick the specific P4 board/module for development — Guition
       JC-ESP32P4-M3-DEV; UART-link and CAN pin assignments done, see
       `main-esp/PINOUT.md`. SD/Ethernet exact pin numbers and the

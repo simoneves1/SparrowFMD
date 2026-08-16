@@ -166,6 +166,136 @@ self_test_step_encoder(void)
     return ok;
 }
 
+// Real SD mount point, real storage_sd_list_gcode_files()/
+// run_print_pipeline() calls below -- but storage_sd itself is still
+// *unverified against real hardware* (see storage_sd.h), so on real
+// boards without an SD card wired yet, this mount attempt is honestly
+// expected to fail and s_sd_mounted stays false, same as every other
+// "cross-compiles, nothing more" caveat in this file. GET /api/files
+// then honestly reports empty rather than faking demo entries -- no
+// slicer metadata parsing exists yet either, so print_time_s is always
+// reported as 0/unknown.
+#define SD_MOUNT_POINT "/sdcard"
+static bool s_sd_mounted;
+
+// -- print pipeline ------------------------------------------------------
+// Closes the loop this file's own comments have flagged since
+// motion-planner/step-encoder were added: a real "start" command now
+// actually reads the named file off the SD card and feeds it through
+// the real gcode-parser -> motion-planner -> step-encoder chain -- the
+// same modules and the same mock dictionary self_test_step_encoder()
+// above exercises with one hardcoded line, just driven by a real file.
+//
+// What "success" honestly means here: the whole file parsed and planned
+// without error, and every resulting step encoded to real Klipper wire
+// bytes against the mock dictionary. It does NOT mean a real print
+// finished -- there's no real MCU or motor turning any of this into
+// physical motion yet (see HARDWARE_TESTING.md), and none of it runs in
+// real time: a whole file's motion is planned in one synchronous burst,
+// not paced to match how long the corresponding real print would take.
+// Once a real transport/MCU exists, this is the point that would need
+// to become an incremental, real-time-paced send instead of a single
+// blocking pass.
+struct print_pipeline_stats {
+    long step_events;
+    long protocol_messages;
+    size_t protocol_bytes;
+    long encode_errors;
+};
+
+struct print_pipeline_ctx {
+    struct step_encoder *enc;
+    struct print_pipeline_stats *stats;
+};
+
+static void
+print_pipeline_step_cb(const struct motion_planner_step_event *ev, void *ctx)
+{
+    struct print_pipeline_ctx *pc = ctx;
+    pc->stats->step_events++;
+
+    struct step_encoder_message msgs[2];
+    int n = step_encoder_encode_step(pc->enc, ev, msgs);
+    if (n < 0) {
+        pc->stats->encode_errors++;
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        pc->stats->protocol_messages++;
+        pc->stats->protocol_bytes += msgs[i].content_len;
+    }
+}
+
+static bool
+run_print_pipeline(const char *filename, struct print_pipeline_stats *stats)
+{
+    memset(stats, 0, sizeof(*stats));
+
+    if (!s_sd_mounted)
+        return false; // honest failure -- no card mounted, nothing to read
+
+    char path[64];
+    int r = snprintf(path, sizeof(path), "%s/%s", SD_MOUNT_POINT, filename);
+    if (r < 0 || (size_t)r >= sizeof(path))
+        return false;
+
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return false;
+
+    struct khp_msgtable table;
+    if (!khp_msgtable_parse(&table, STEP_ENCODER_MOCK_DICT_JSON
+                            , sizeof(STEP_ENCODER_MOCK_DICT_JSON) - 1)) {
+        fclose(f);
+        return false;
+    }
+    struct step_encoder_config enc_cfg = {
+        .oid_x = 1, .oid_y = 2, .oid_z = 3
+        , .mcu_freq_hz = 16000000.0, .table = &table,
+    };
+    struct step_encoder *enc = step_encoder_create(&enc_cfg);
+    if (!enc) {
+        khp_msgtable_free(&table);
+        fclose(f);
+        return false;
+    }
+
+    struct print_pipeline_ctx pc = { .enc = enc, .stats = stats };
+    struct motion_planner_config mp_cfg = {
+        // Placeholder kinematics config -- no real per-printer settings
+        // feed these yet (see cfg_parser / on_web_settings_*), matching
+        // the same values self_test_motion_planner() above uses.
+        .step_dist_x = 0.005f, .step_dist_y = 0.005f, .step_dist_z = 0.005f
+        , .max_velocity_mm_s = 150.f, .max_accel_mm_s2 = 1500.f
+        , .on_step = print_pipeline_step_cb, .cb_ctx = &pc,
+    };
+    struct motion_planner *mp = motion_planner_create(&mp_cfg);
+
+    bool ok = mp != NULL;
+    char line[GCODE_MAX_LINE];
+    while (ok && fgets(line, sizeof(line), f)) {
+        struct gcode_command cmd;
+        enum gcode_status st = gcode_parse_line(line, strlen(line), &cmd);
+        if (st == GCODE_EMPTY)
+            continue;
+        if (st != GCODE_OK) {
+            ok = false; // malformed line -- abort honestly, don't skip silently
+            break;
+        }
+        if (!motion_planner_handle_gcode(mp, &cmd)) {
+            ok = false;
+            break;
+        }
+    }
+
+    if (mp)
+        motion_planner_destroy(mp);
+    step_encoder_destroy(enc);
+    khp_msgtable_free(&table);
+    fclose(f);
+    return ok;
+}
+
 static bool
 self_test_shared_protocol(void)
 {
@@ -276,21 +406,16 @@ static char s_settings_text[WEB_SERVER_MAX_SETTINGS_BYTES] = "";
 static struct web_camera_config s_camera_config = {.mode = WEB_CAMERA_NONE};
 
 // In-RAM only print history ring buffer -- lost on reboot, same caveat
-// as settings/camera config. There's no real gcode/kinematics pipeline
-// to report an actual print *completing*, so "success" here can only
-// honestly mean one thing right now: a print that was still running (a
-// filename was being tracked) when a "stop" command arrived is recorded
-// as success=false ("stopped early"). Nothing today can record
-// success=true -- that needs a real print-completion event, which
-// doesn't exist yet. This is a real, non-fabricated signal (an actual
-// received "stop"), just a narrow one -- not a substitute for real print
-// tracking once gcode/kinematics exists.
+// as settings/camera config. success=true now means something real: the
+// whole named file parsed and planned through motion-planner/step-
+// encoder without error (see run_print_pipeline()'s comment for exactly
+// what that does and doesn't mean -- notably, not a real physical print
+// finishing, since no real MCU/motor exists yet). success=false means
+// that pipeline failed or aborted (missing/malformed file, no SD card
+// mounted, a gcode line motion-planner rejected).
 #define HISTORY_CAPACITY 20
 static struct web_print_history_entry s_history[HISTORY_CAPACITY];
 static size_t s_history_count; // number of valid entries, <= HISTORY_CAPACITY
-
-static char s_tracking_filename[WEB_FILENAME_LEN] = "";
-static int64_t s_tracking_start_us;
 
 static void
 record_print_history(const char *filename, uint32_t duration_s, bool success)
@@ -312,27 +437,43 @@ static void
 on_web_command(const struct web_control_command *cmd, void *ctx)
 {
     (void)ctx;
-    // No gcode/kinematics pipeline exists yet to actually act on this --
-    // logging what was received is the honest thing to do here, the same
-    // "encoded, not sent/executed -- no pipeline wired yet" pattern
-    // touch-ui's demo_send_command uses for the same reason.
-    ESP_LOGI(TAG, "web command received (not executed -- no gcode/kinematics"
-                  " pipeline wired yet): cmd=%d gcode=\"%s\" filename=\"%s\""
-                  " value=%.3f target_temp=%.3f jog=(%.2f,%.2f,%.2f)@%.1f"
+
+    if (cmd->command == WEB_CMD_START && cmd->filename[0] != '\0') {
+        int64_t start_us = esp_timer_get_time();
+        struct print_pipeline_stats stats;
+        bool ok = run_print_pipeline(cmd->filename, &stats);
+        uint32_t duration_s = (uint32_t)
+            ((esp_timer_get_time() - start_us) / 1000000);
+        ESP_LOGI(TAG, "print pipeline for \"%s\": %s -- %ld step events,"
+                      " %ld protocol messages (%zu bytes), %ld encode errors"
+                , cmd->filename, ok ? "completed" : "failed/aborted"
+                , stats.step_events, stats.protocol_messages
+                , stats.protocol_bytes, stats.encode_errors);
+        record_print_history(cmd->filename, duration_s, ok);
+        return;
+    }
+
+    // Everything else still has no execution backend. Jog/temp-set/
+    // filament/Tune commands aren't gcode text at all (nothing for
+    // gcode-parser to act on); raw Console "gcode" lines (WEB_CMD_GCODE)
+    // aren't fed through motion-planner yet either -- that would need a
+    // motion_planner instance persisted across separate calls (position
+    // carried between lines), which run_print_pipeline() above doesn't
+    // need since it owns one file start-to-finish; future work, not done
+    // here. "stop" also lands here: run_print_pipeline() above completes
+    // synchronously before returning, so there's no longer an in-progress
+    // print for "stop" to interrupt -- that will matter again once a
+    // real transport/MCU makes this an incremental, real-time-paced send
+    // instead (see run_print_pipeline()'s comment). Logging what was
+    // received is the honest thing to do for all of these, the same
+    // pattern touch-ui's demo_send_command uses for the same reason.
+    ESP_LOGI(TAG, "web command received (not executed -- no execution"
+                  " backend for this command type yet): cmd=%d gcode=\"%s\""
+                  " filename=\"%s\" value=%.3f target_temp=%.3f"
+                  " jog=(%.2f,%.2f,%.2f)@%.1f"
             , cmd->command, cmd->gcode, cmd->filename, cmd->value
             , cmd->target_temp, cmd->jog_dx, cmd->jog_dy, cmd->jog_dz
             , cmd->jog_feedrate);
-
-    if (cmd->command == WEB_CMD_START && cmd->filename[0] != '\0') {
-        strncpy(s_tracking_filename, cmd->filename, WEB_FILENAME_LEN - 1);
-        s_tracking_filename[WEB_FILENAME_LEN - 1] = '\0';
-        s_tracking_start_us = esp_timer_get_time();
-    } else if (cmd->command == WEB_CMD_STOP && s_tracking_filename[0] != '\0') {
-        uint32_t duration_s = (uint32_t)
-            ((esp_timer_get_time() - s_tracking_start_us) / 1000000);
-        record_print_history(s_tracking_filename, duration_s, false);
-        s_tracking_filename[0] = '\0';
-    }
 }
 
 static size_t
@@ -367,17 +508,6 @@ on_web_diagnostics(struct web_link_status *out, size_t max, void *ctx)
     out[0].ok = link_watchdog_check(&s_touchui_link, now_ms) == LINK_OK;
     return 1;
 }
-
-// Real SD mount point, real storage_sd_list_gcode_files() call below --
-// but storage_sd itself is still *unverified against real hardware* (see
-// storage_sd.h), so on real boards without an SD card wired yet, this
-// mount attempt is honestly expected to fail and s_sd_mounted stays
-// false, same as every other "cross-compiles, nothing more" caveat in
-// this file. GET /api/files then honestly reports empty rather than
-// faking demo entries -- no slicer metadata parsing exists yet either,
-// so print_time_s is always reported as 0/unknown.
-#define SD_MOUNT_POINT "/sdcard"
-static bool s_sd_mounted;
 
 static size_t
 on_web_files_list(struct web_file_entry *out, size_t max, void *ctx)
