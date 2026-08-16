@@ -95,10 +95,34 @@ the tab bar in the right reading order.
 `main.c` still drives Status with one canned `slp_status_update` at
 boot (no real UART link to main-esp yet, same open PINOUT.md question
 as before); button presses build a real `slp_control_command` and log
-it rather than sending it anywhere, for the same reason. Not yet
-verified: actual touch coordinate accuracy and tab navigation from a
-real finger press (needs interactive testing, not just a boot-time
-self-test) -- next up.
+it rather than sending it anywhere, for the same reason.
+
+Touch input is now verified too, closing the one piece this whole
+bring-up had left open. First attempt at tapping the real UI did
+nothing at all -- traced to the XPT2046 touch controller having its own
+independent `swap_xy`/`mirror_x`/`mirror_y` config, entirely separate
+from the display panel's own rotation, that had never been set; touch
+coordinates were coming back in the raw panel orientation while
+LVGL/the display used the rotated one. Setting matching flags got taps
+*roughly* registering, but a live finger-press check showed the mapping
+was still wrong ("the touch orientation doesn't match the screen's").
+Root cause: the XPT2046 is a *resistive* controller, so its raw ADC
+range is a property of this specific physical panel's resistive
+gradient (manufacturing tolerance) -- fixed `swap_xy`/mirror flags can't
+correct for that, only a real per-device calibration can. Built a
+2-point calibration harness (draw a marker at a known screen position,
+log the raw reading for an actual finger press there) to derive one --
+except a 2-point *diagonal* fit turned out unable to distinguish "raw X
+tracks logical X" from "raw X actually tracks logical Y" (axis swap):
+both fit two diagonal points equally well and only diverge off that
+line, which is exactly why navigation half-worked but felt
+orientation-wrong. Redone with 3 non-colinear points (an L-shape) to
+detect the swap properly -- confirmed real on this unit (moving only
+the logical-X target left raw X almost unchanged but moved raw Y by
+241, i.e. the axes really are swapped) -- and the resulting
+scale+offset+swap transform, applied via `esp_lcd_touch_config_t`'s
+`process_coordinates` hook in `display_driver.c`, produces correct tab
+navigation and button hits on real hardware.
 
 ## Contents (planned)
 - UART client talking to main-esp's `uart-links` module — status

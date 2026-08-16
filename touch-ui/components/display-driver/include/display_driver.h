@@ -5,16 +5,23 @@
 // bring-up/prototyping target, see this component's design note in
 // touch-ui/README.md.
 //
-// *** VERIFIED ON REAL HARDWARE (panel init + fill, touch SPI comms) ***
-// Flashed to a real board: the ST7796 panel initializes, a full-screen
-// solid-color fill via esp_lcd_panel_draw_bitmap renders correctly (right
-// color, right orientation, no swap/mirror needed -- the config below's
-// defaults for this panel family turned out to be correct as-is), and
-// esp_lcd_touch_read_data() completes an SPI transaction with the
-// XPT2046 successfully. NOT yet verified: actual touch coordinate
-// accuracy (a real finger press hasn't been checked against expected
-// x/y), since that needs interactive testing beyond a boot-time
-// self-test. See touch-ui/main/main.c's hw_test_display().
+// *** VERIFIED ON REAL HARDWARE, including touch accuracy ***
+// Panel: correct color/orientation confirmed on real hardware (needed a
+// real swap_xy+mirror(x,y) transform plus CONFIG_LV_COLOR_16_SWAP for
+// LVGL content specifically -- see touch-ui/PINOUT.md's Orientation
+// section and touch-ui/README.md for the full derivation, including the
+// esp_lvgl_port gotcha where an unset rotation field silently overwrote
+// this file's panel-level transform).
+// Touch: the XPT2046 is a *resistive* controller, so raw coordinates
+// needed a real per-device linear calibration (scale+offset per axis,
+// plus an axis swap that turned out to be genuinely present on this
+// unit) applied via esp_lcd_touch_config_t's process_coordinates hook
+// below -- fixed swap_xy/mirror flags alone aren't enough for a
+// resistive panel's raw ADC range. Derived from real finger-press data
+// via touch-ui/main/main.c's run_touch_calibration() (see its own
+// comment for why a 3-point, non-diagonal calibration was needed instead
+// of 2 -- a 2-point diagonal fit can't detect an axis swap). Confirmed
+// correct: tab navigation and button hits land where tapped.
 #ifndef DISPLAY_DRIVER_H
 #define DISPLAY_DRIVER_H
 

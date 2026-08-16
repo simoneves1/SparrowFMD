@@ -85,6 +85,55 @@ init_panel(struct display_driver_handles *out
     return esp_lcd_panel_disp_on_off(out->panel, true) == ESP_OK;
 }
 
+// Derived from real hardware -- see touch-ui/main/main.c's
+// run_touch_calibration() and this file's init_touch() comment. A first
+// 2-point (diagonal) calibration attempt produced constants that looked
+// plausible but felt orientation-wrong in practice; a 3-point (L-shaped,
+// non-colinear) recalibration revealed the raw X/Y axes are genuinely
+// swapped on this unit -- moving only the logical X target barely moved
+// raw X (delta ~0) but moved raw Y by 241, i.e. raw Y is the one that
+// actually tracks logical X. These constants apply that swap before the
+// per-axis scale/offset.
+#define TOUCH_CAL_SWAP_RAW_XY 1
+#define TOUCH_CAL_SCALE_X   1.65975f
+#define TOUCH_CAL_OFFSET_X -29.71f
+#define TOUCH_CAL_SCALE_Y   0.76433f
+#define TOUCH_CAL_OFFSET_Y -17.32f
+
+static uint16_t
+clamp_u16(float v, uint16_t max)
+{
+    if (v < 0.f)
+        return 0;
+    if (v > (float)max)
+        return max;
+    return (uint16_t)v;
+}
+
+static void
+touch_apply_calibration(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y
+                        , uint16_t *strength, uint8_t *point_num
+                        , uint8_t max_point_num)
+{
+    (void)tp; (void)strength; (void)max_point_num;
+    for (uint8_t i = 0; i < *point_num; i++) {
+#if TOUCH_CAL_SWAP_RAW_XY
+        float rx = y[i], ry = x[i];
+#else
+        float rx = x[i], ry = y[i];
+#endif
+        float lx = rx * TOUCH_CAL_SCALE_X + TOUCH_CAL_OFFSET_X;
+        float ly = ry * TOUCH_CAL_SCALE_Y + TOUCH_CAL_OFFSET_Y;
+        // Hardcoded to this board's known 480x320 landscape resolution
+        // (touch-ui/main/main.c's DISPLAY_H_RES/DISPLAY_V_RES) rather
+        // than threaded through from cfg -- this callback's signature is
+        // fixed by esp_lcd_touch_config_t and has no spare context
+        // pointer wired up for it here.
+        x[i] = clamp_u16(lx, 479);
+        y[i] = clamp_u16(ly, 319);
+    }
+}
+
 static bool
 init_touch(struct display_driver_handles *out
           , const struct display_driver_config *cfg)
@@ -94,11 +143,27 @@ init_touch(struct display_driver_handles *out
                                  , &io_config, &out->touch_io) != ESP_OK)
         return false;
 
+    // The XPT2046 is a *resistive* touch controller: its raw ADC output
+    // range is a property of this specific physical panel's resistive
+    // gradient (manufacturing tolerance), not something swap_xy/mirror_x/
+    // mirror_y flags alone can fix -- those only reorder/flip axes, they
+    // don't rescale the raw range. Found via real hardware: with those
+    // flags set, taps still landed nowhere near their visual target (e.g.
+    // tapping the Jog tab visually did nothing), and a 2-point
+    // calibration (draw a marker at a known logical position, log the
+    // raw reading for a real finger press there, repeat for a second
+    // point far away) showed the raw range wasn't close to
+    // 0..x_max/0..y_max at all. See touch-ui/main/main.c's
+    // run_touch_calibration() for how these constants were derived --
+    // they're specific to this exact physical unit's touch panel, not a
+    // general XPT2046 property; a different physical board of the same
+    // model would need its own recalibration.
     esp_lcd_touch_config_t touch_config = {
         .x_max = cfg->h_res,
         .y_max = cfg->v_res,
         .rst_gpio_num = -1, // no separate touch reset line on this board
         .int_gpio_num = cfg->pin_touch_irq,
+        .process_coordinates = touch_apply_calibration,
     };
     return esp_lcd_touch_new_spi_xpt2046(out->touch_io, &touch_config
                                          , &out->touch) == ESP_OK;
