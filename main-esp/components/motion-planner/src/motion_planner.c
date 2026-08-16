@@ -205,11 +205,73 @@ queue_move(struct motion_planner *mp, float target_x, float target_y
     return true;
 }
 
+// Rebases the planner's and kinematics' internal position to (x, y, z)
+// without queuing any motion -- shared by G28 and G92, see header
+// comment for why both use this (G28 has no real endstop to seek here,
+// so it's the same operation as G92 targeting 0).
+static void
+rebase_position(struct motion_planner *mp, float x, float y, float z)
+{
+    mp->pos_x = x;
+    mp->pos_y = y;
+    mp->pos_z = z;
+    itersolve_set_position(mp->x.sk, x, y, z);
+    itersolve_set_position(mp->y.sk, x, y, z);
+    itersolve_set_position(mp->z.sk, x, y, z);
+}
+
+// Bare axis letters (no following number) don't get captured by
+// gcode-parser's param collection -- they land in raw_args instead, see
+// this component's header comment. This is the fallback scan for that
+// form, e.g. "G28 X Y" or "G92 X Y".
+static void
+scan_raw_args_for_axes(const char *raw_args, bool *sel_x, bool *sel_y, bool *sel_z)
+{
+    for (const char *p = raw_args; *p; p++) {
+        if (*p == 'X' || *p == 'x') *sel_x = true;
+        else if (*p == 'Y' || *p == 'y') *sel_y = true;
+        else if (*p == 'Z' || *p == 'z') *sel_z = true;
+    }
+}
+
 bool
 motion_planner_handle_gcode(struct motion_planner *mp
                             , const struct gcode_command *cmd)
 {
-    if (cmd->letter != 'G' || (cmd->code != 0 && cmd->code != 1))
+    if (cmd->letter != 'G')
+        return true; // not a G command -- ignored on purpose, see header comment
+
+    if (cmd->code == 28 || cmd->code == 92) {
+        const struct gcode_param *xp = gcode_find_param(cmd, 'X');
+        const struct gcode_param *yp = gcode_find_param(cmd, 'Y');
+        const struct gcode_param *zp = gcode_find_param(cmd, 'Z');
+        bool sel_x = xp != NULL, sel_y = yp != NULL, sel_z = zp != NULL;
+        if (!sel_x && !sel_y && !sel_z)
+            scan_raw_args_for_axes(cmd->raw_args, &sel_x, &sel_y, &sel_z);
+
+        // No axis letters at all (bare "G28"/"G92") selects every axis.
+        if (!sel_x && !sel_y && !sel_z)
+            sel_x = sel_y = sel_z = true;
+
+        // G28 always rebases to 0 (no real endstop to seek toward, see
+        // header comment); G92 rebases to the given value, or keeps the
+        // axis's current value if only its bare letter was seen (no
+        // number given, e.g. "G92 X" -- treat as "leave X where it is").
+        float target_x = mp->pos_x, target_y = mp->pos_y, target_z = mp->pos_z;
+        if (cmd->code == 28) {
+            if (sel_x) target_x = 0.f;
+            if (sel_y) target_y = 0.f;
+            if (sel_z) target_z = 0.f;
+        } else {
+            if (xp) target_x = (float)xp->value;
+            if (yp) target_y = (float)yp->value;
+            if (zp) target_z = (float)zp->value;
+        }
+        rebase_position(mp, target_x, target_y, target_z);
+        return true;
+    }
+
+    if (cmd->code != 0 && cmd->code != 1)
         return true; // not a move -- ignored on purpose, see header comment
 
     const struct gcode_param *fp = gcode_find_param(cmd, 'F');

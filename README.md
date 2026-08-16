@@ -66,20 +66,22 @@ raw text for commands like M117 that don't use standard letter=value
 params.
 
 `motion-planner` (new) is the first thing in this repo that actually
-links gcode text to real step output: turns parsed `G0`/`G1` commands
-into queued `kinematics` moves and reports the resulting stepper pulse
+links gcode text to real step output: turns parsed `G0`/`G1`/`G28`/`G92`
+commands into queued `kinematics` moves (or, for `G28`/`G92`, an
+internal position rebase) and reports the resulting stepper pulse
 events, closing the gap `gcode-parser`'s own design note leaves on
-purpose ("stays decoupled from kinematics"). Deliberately minimal --
-only `G0`/`G1` act, no lookahead queue (every move fully stops before
-the next starts), `F`/X/Y/Z are sticky/modal per standard G-code
-behavior. Host-tested (12 checks) and wired into `main-esp/main.c`'s
-boot self-test, so a real board also runs one real G1 line through the
-real parser and planner and confirms steps come out the other end. A
-real bug was caught during development this way: an early version's
-flush-time margin (copied from `kinematics`' own single-move test
-harness) silently dropped steps for any queued move shorter than that
-margin -- see that component's own README.md for the full story and how
-the regression test catches it.
+purpose ("stays decoupled from kinematics"). Deliberately minimal -- no
+lookahead queue (every move fully stops before the next starts), `F`/X/Y/Z
+are sticky/modal per standard G-code behavior, `G28` doesn't perform
+real endstop-seeking motion (no endstop input exists yet -- it's the
+same position-rebase `G92` does, just always to 0). Host-tested (18
+checks) and wired into `main-esp/main.c`'s boot self-test, so a real
+board also runs one real G1 line through the real parser and planner
+and confirms steps come out the other end. A real bug was caught during
+development this way: an early version's flush-time margin (copied from
+`kinematics`' own single-move test harness) silently dropped steps for
+any queued move shorter than that margin -- see that component's own
+README.md for the full story and how the regression test catches it.
 
 `step-encoder` (new) closes the next gap: turns `motion-planner`'s step
 events into real Klipper wire-format `queue_step`/`set_next_step_dir`
@@ -294,8 +296,10 @@ require rewriting application logic.
       rest of `klipper-host-protocol` against real hardware once
       available
 - [x] `main-esp`: `gcode-parser` module
-- [x] `main-esp`: `motion-planner` module — G0/G1 -> kinematics moves,
-      host-tested, wired into main.c's boot self-test, see Status
+- [x] `main-esp`: `motion-planner` module — G0/G1/G28/G92 -> kinematics
+      moves/position rebase, host-tested (18 checks), wired into main.c's
+      boot self-test, see Status. G28 doesn't do real endstop-seeking
+      motion yet (no endstop input exists), see that module's own README
 - [x] `main-esp`: `kinematics` module — Cartesian trajectory planning,
       host-tested, cross-compiles for esp32p4/esp32s3; not yet wired to
       `gcode-parser` or a real step-transmission path, see Status

@@ -143,12 +143,79 @@ test_non_move_commands_ignored(void)
     struct step_counts c = {0};
     struct motion_planner *mp = make_planner(count_steps, &c);
 
-    feed(mp, "G28");        // homing -- not implemented, should be a no-op
-    feed(mp, "M104 S200");  // set hotend temp -- not a move
-    feed(mp, "G92 X0");     // position offset -- not implemented yet
+    feed(mp, "M104 S200");  // set hotend temp -- not a move, no G28/G92 handling either
 
-    CHECK("non-move commands produce no steps and are not treated as errors"
+    CHECK("a non-G command produces no steps and is not treated as an error"
          , c.x == 0 && c.y == 0 && c.z == 0);
+
+    motion_planner_destroy(mp);
+}
+
+static void
+test_g28_and_g92_produce_no_steps_themselves(void)
+{
+    struct step_counts c = {0};
+    struct motion_planner *mp = make_planner(count_steps, &c);
+
+    feed(mp, "G28");     // home all -- rebases position, no physical motion
+    feed(mp, "G92 X5");  // rebase X's label to 5 -- still no physical motion
+
+    CHECK("G28/G92 themselves never produce step events"
+         , c.x == 0 && c.y == 0 && c.z == 0);
+
+    motion_planner_destroy(mp);
+}
+
+static void
+test_g92_rebases_position_so_the_next_move_distance_is_relative_to_it(void)
+{
+    // Move to X=10 (real motion, produces steps), then G92 X0 relabels
+    // that same physical position as "0" without moving. A following
+    // "G1 X10" is then another full 10mm of real motion (not a no-op),
+    // because the target is now 10mm away from the *relabeled* current
+    // position -- proving G92 rebased the internal position, not just
+    // the reported one.
+    struct step_counts c = {0};
+    struct motion_planner *mp = make_planner(count_steps, &c);
+
+    feed(mp, "G1 X10 F3000");
+    long first_move_x = c.x;
+    CHECK("first move to X10 produced steps", first_move_x > 0);
+
+    feed(mp, "G92 X0"); // relabel current physical position as X=0
+
+    feed(mp, "G1 X10 F3000"); // should be another real 10mm move
+    long second_move_x = c.x - first_move_x;
+    CHECK("after G92 X0, G1 X10 is real motion again (not a no-op)"
+         , second_move_x > first_move_x / 2); // same order of magnitude as the first move
+
+    motion_planner_destroy(mp);
+}
+
+static void
+test_g28_rebases_selected_axis_to_zero_via_bare_letter(void)
+{
+    // "G28 X" -- gcode-parser doesn't capture the bare "X" as a param
+    // (no number follows it), so this only works if motion-planner's
+    // raw_args fallback scan is working. Move to (X10, Y20), home only
+    // X, then move to (X10, Y20) again: X should be real motion again
+    // (rebased to 0), Y should produce no further steps (already at 20,
+    // untouched by the selective home).
+    struct step_counts c = {0};
+    struct motion_planner *mp = make_planner(count_steps, &c);
+
+    feed(mp, "G1 X10 Y20 F3000");
+    long x_after_first = c.x, y_after_first = c.y;
+    CHECK("initial move produced both X and Y steps"
+         , x_after_first > 0 && y_after_first > 0);
+
+    feed(mp, "G28 X"); // bare letter, X only
+
+    feed(mp, "G1 X10 Y20 F3000");
+    CHECK("re-homed X axis moves again (bare-letter axis selection worked)"
+         , c.x > x_after_first);
+    CHECK("Y axis, not selected by \"G28 X\", produced no further steps"
+         , c.y == y_after_first);
 
     motion_planner_destroy(mp);
 }
@@ -183,6 +250,9 @@ main(void)
     test_multiple_short_moves_none_dropped();
     test_modal_axis_position_preserved();
     test_non_move_commands_ignored();
+    test_g28_and_g92_produce_no_steps_themselves();
+    test_g92_rebases_position_so_the_next_move_distance_is_relative_to_it();
+    test_g28_rebases_selected_axis_to_zero_via_bare_letter();
     test_zero_distance_move_is_a_harmless_noop();
     test_time_cursor_advances();
 

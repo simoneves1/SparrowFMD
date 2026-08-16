@@ -8,7 +8,7 @@ component is that consumer, and the first thing in this repo that
 actually links gcode text to real step output.
 
 ## Status
-Host-tested (12 checks, see `test/test_main.c`) and cross-compiles clean
+Host-tested (18 checks, see `test/test_main.c`) and cross-compiles clean
 for esp32p4/esp32s3 as part of `main-esp`'s normal build. Wired into
 `main-esp/main/main.c`'s boot self-test, so a real board also exercises
 one real `G1` line through the real parser and planner and confirms
@@ -16,9 +16,26 @@ steps came out the other end -- not a performance measurement, just
 confirmation the chain links together on the real target.
 
 ## Scope (deliberately minimal)
-- Only `G0`/`G1` are acted on. Everything else (`G28` homing, `G92`
-  offset, M-codes, etc.) is silently ignored -- this proves the chain
-  works, it is not a G-code interpreter.
+- `G0`/`G1`/`G28`/`G92` are acted on. Everything else (M-codes, etc.) is
+  silently ignored -- this proves the chain works, it is not a G-code
+  interpreter.
+- `G28` (homing) does NOT perform real endstop-seeking motion -- there's
+  no endstop input in this project yet. It rebases the internal position
+  to 0 for the selected axes, the same underlying operation `G92` uses
+  to rebase to a caller-given value (both call the same
+  `rebase_position()`, which also re-seeds each axis's
+  `stepper_kinematics.commanded_pos` via `itersolve_set_position` --
+  matching real Klipper's `toolhead.set_position()` -> `kin.set_position()`
+  path). Fine for exercising the chain end to end; a real homing routine
+  still needs real endstop hardware to seek toward.
+- `G28`/`G92` axis selection has a real limitation worth knowing:
+  gcode-parser's param collection doesn't capture a bare letter with no
+  following number (`X` with no digits), which is how G28's usual
+  `G28 X Y` form is written -- see gcode-parser's own header comment.
+  Those bare letters land in `raw_args` instead, so this module also
+  scans `raw_args` for `X`/`Y`/`Z` characters as a fallback. Both forms
+  (`G28 X0` and `G28 X`) work; a bare `G28`/`G92` with no axis letters
+  at all selects every axis.
 - No lookahead queue: every move decelerates fully to a stop before the
   next one starts. Real Klipper smooths velocity across queued moves and
   limits cornering speed by junction angle; this doesn't, on purpose, to
@@ -46,10 +63,8 @@ move either). `test_multiple_short_moves_none_dropped()` in
 reintroducing the bug and watching that test (and 3 others) fail.
 
 ## Not yet done
-- Feeding `kinematics_steps`' per-axis step events into
-  `klipper-host-protocol`'s message encoding, to actually transmit them
-  to a real MCU board. Currently the caller just gets a callback per
-  step (or `main.c`'s self-test just counts them).
 - A real lookahead queue (velocity smoothing + junction/cornering limits
   across consecutive moves) -- see "Scope" above.
-- `G28`/`G92` and anything else beyond `G0`/`G1`.
+- Real endstop-seeking `G28` motion (see "Scope" above -- currently just
+  a position rebase, same as `G92`).
+- Anything beyond `G0`/`G1`/`G28`/`G92` (M-codes, etc.).
