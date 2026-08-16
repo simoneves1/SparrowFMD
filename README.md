@@ -65,6 +65,24 @@ what any command means (per its own design note) and falling back to
 raw text for commands like M117 that don't use standard letter=value
 params.
 
+`motion-planner` (new) is the first thing in this repo that actually
+links gcode text to real step output: turns parsed `G0`/`G1` commands
+into queued `kinematics` moves and reports the resulting stepper pulse
+events, closing the gap `gcode-parser`'s own design note leaves on
+purpose ("stays decoupled from kinematics"). Deliberately minimal --
+only `G0`/`G1` act, no lookahead queue (every move fully stops before
+the next starts), `F`/X/Y/Z are sticky/modal per standard G-code
+behavior. Host-tested (12 checks) and wired into `main-esp/main.c`'s
+boot self-test, so a real board also runs one real G1 line through the
+real parser and planner and confirms steps come out the other end. A
+real bug was caught during development this way: an early version's
+flush-time margin (copied from `kinematics`' own single-move test
+harness) silently dropped steps for any queued move shorter than that
+margin -- see that component's own README.md for the full story and how
+the regression test catches it. Not yet done: feeding step events into
+`klipper-host-protocol`'s message encoding to actually reach a real MCU
+board, and any real lookahead/cornering-speed smoothing.
+
 `shared-protocol` (in `shared/shared-protocol/`) is also done and
 unit-tested: the UART message schema between main-esp and touch-ui/
 ams-esp, with its own frame envelope (independent from
@@ -236,7 +254,10 @@ require rewriting application logic.
       data for the float32 port (deliberately waiting for real hardware
       rather than an emulated/estimated number, see Status — the
       available QEMU can't exercise the P4's hardware FPU)
-- [ ] Wire `gcode-parser` -> `kinematics` -> a real step-transmission
+- [x] Wire `gcode-parser` -> `kinematics` — new `motion-planner` module,
+      G0/G1 only, no lookahead queue, host-tested (12 checks) and wired
+      into main.c's boot self-test, see Status
+- [ ] Wire `motion-planner`'s step events -> a real step-transmission
       path (`kinematics_steps.h`'s callback -> `klipper-host-protocol`
       message encoding) — no such pipeline exists yet
 - [x] Pick the specific P4 board/module for development — Guition
@@ -257,6 +278,8 @@ require rewriting application logic.
       rest of `klipper-host-protocol` against real hardware once
       available
 - [x] `main-esp`: `gcode-parser` module
+- [x] `main-esp`: `motion-planner` module — G0/G1 -> kinematics moves,
+      host-tested, wired into main.c's boot self-test, see Status
 - [x] `main-esp`: `kinematics` module — Cartesian trajectory planning,
       host-tested, cross-compiles for esp32p4/esp32s3; not yet wired to
       `gcode-parser` or a real step-transmission path, see Status

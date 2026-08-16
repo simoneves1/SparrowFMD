@@ -6,6 +6,8 @@ idf_component_register(
     REQUIRES
         klipper-host-protocol
         gcode-parser
+        kinematics
+        motion-planner
         shared-protocol
         safety
         storage

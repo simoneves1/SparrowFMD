@@ -18,6 +18,7 @@
 #include "link_watchdog.h"
 #include "cfg_parser.h"
 #include "web_api.h"
+#include "motion_planner.h"
 #include "web_server.h"
 
 static const char *TAG = "main-esp";
@@ -62,6 +63,51 @@ self_test_gcode(void)
         return false;
     const struct gcode_param *x = gcode_find_param(&cmd, 'X');
     return x != NULL && x->value == 10.5;
+}
+
+// Plain C has no closures, so this self-test's step counter has to be a
+// file-scope static rather than something the callback captures --
+// harmless here since self_test_motion_planner() never runs concurrently
+// with itself.
+static int s_motion_planner_self_test_step_count;
+
+static void
+motion_planner_self_test_count_step(const struct motion_planner_step_event *ev
+                                    , void *ctx)
+{
+    (void)ev; (void)ctx;
+    s_motion_planner_self_test_step_count++;
+}
+
+// First real exercise of the full gcode -> kinematics chain (via
+// motion-planner) on real hardware, not just the host-native unit tests
+// in each module's own test/test_main.c. Feeds one real G1 line through
+// the real parser and planner and checks steps actually came out the
+// other end -- proves the chain links together correctly on the real
+// target, though it says nothing about the P4's real-time performance
+// running it (that's still the open speed question, see root README).
+static bool
+self_test_motion_planner(void)
+{
+    s_motion_planner_self_test_step_count = 0;
+
+    struct motion_planner_config cfg = {
+        .step_dist_x = 0.005f, .step_dist_y = 0.005f, .step_dist_z = 0.005f
+        , .max_velocity_mm_s = 150.f, .max_accel_mm_s2 = 1500.f
+        , .on_step = motion_planner_self_test_count_step, .cb_ctx = NULL,
+    };
+    struct motion_planner *mp = motion_planner_create(&cfg);
+    if (!mp)
+        return false;
+
+    static const char line[] = "G1 X60 F6000";
+    struct gcode_command cmd;
+    bool ok = gcode_parse_line(line, strlen(line), &cmd) == GCODE_OK
+        && motion_planner_handle_gcode(mp, &cmd)
+        && s_motion_planner_self_test_step_count > 0;
+
+    motion_planner_destroy(mp);
+    return ok;
 }
 
 static bool
@@ -387,6 +433,10 @@ app_main(void)
 
     ok = self_test_gcode();
     ESP_LOGI(TAG, "gcode-parser self-test: %s", ok ? "PASS" : "FAIL");
+
+    ok = self_test_motion_planner();
+    ESP_LOGI(TAG, "motion-planner (gcode->kinematics chain) self-test: %s"
+            , ok ? "PASS" : "FAIL");
 
     ok = self_test_shared_protocol();
     ESP_LOGI(TAG, "shared-protocol self-test: %s", ok ? "PASS" : "FAIL");

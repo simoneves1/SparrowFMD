@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+        "src/motion_planner.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        gcode-parser
+        kinematics
+)
